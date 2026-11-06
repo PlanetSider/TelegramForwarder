@@ -1,0 +1,138 @@
+{% extends "admin_base.html" %}
+{% block title %}规则{% endblock %}
+{% block crumb %}转发 / <b>规则</b>{% endblock %}
+
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>转发规则</h1>
+    <p>源频道 → 目标频道，以及每条规则独立生效的过滤、AI、RSS、推送配置</p>
+  </div>
+  <div class="actions">
+    <a class="btn" href="/admin">刷新</a>
+  </div>
+</div>
+
+<form class="toolbar" method="get" action="/admin/rules">
+  <input class="input" type="text" name="q" value="{{ q }}" placeholder="搜索规则名、源或目标频道…">
+  <select class="input" name="status">
+    <option value="" {{ 'selected' if not status else '' }}>全部状态</option>
+    <option value="enabled" {{ 'selected' if status == 'enabled' else '' }}>仅启用</option>
+    <option value="disabled" {{ 'selected' if status == 'disabled' else '' }}>仅停用</option>
+  </select>
+  <select class="input" name="mode">
+    <option value="" {{ 'selected' if not mode else '' }}>全部方式</option>
+    <option value="bot" {{ 'selected' if mode == 'bot' else '' }}>机器人转发</option>
+    <option value="user" {{ 'selected' if mode == 'user' else '' }}>用户账号转发</option>
+  </select>
+  <button class="btn" type="submit">筛选</button>
+  <div class="spacer"></div>
+  <span class="sub" style="font-size:12px;color:#8b97a6">{{ rules|length }} 条</span>
+</form>
+
+<div class="card">
+  {% if rules %}
+  <table>
+    <thead>
+      <tr>
+        <th style="width:70px">ID</th>
+        <th>规则 / 频道</th>
+        <th style="width:110px">方式</th>
+        <th>能力</th>
+        <th style="width:100px">过滤</th>
+        <th style="width:90px">状态</th>
+        <th style="width:80px"></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in rules %}
+      <tr>
+        <td><b>#{{ r.id }}</b></td>
+        <td>
+          <div class="rule-name">
+            <a href="/admin/rules/{{ r.id }}" style="color:inherit">{{ r.source.name if r.source else ('规则 ' ~ r.id) }}</a>
+          </div>
+          <div class="rule-sub">{{ r.source.name if r.source else '?' }} → {{ r.target.name if r.target else '?' }}</div>
+        </td>
+        <td>
+          {% if r.use_bot %}<span class="tag bot">机器人</span>
+          {% else %}<span class="tag user">用户账号</span>{% endif %}
+          {% if r.handle_mode == 'EDIT' %}<span class="tag">编辑原帖</span>{% endif %}
+        </td>
+        <td>
+          {% if r.is_ai %}<span class="tag ai">AI</span>{% endif %}
+          {% if r.enable_rss %}<span class="tag rss">RSS</span>{% endif %}
+          {% if r.enable_push %}<span class="tag push">推送{% if r.enable_only_push %}·仅推{% endif %}</span>{% endif %}
+          {% if r.is_replace %}<span class="tag">替换</span>{% endif %}
+          {% if r.is_summary %}<span class="tag">总结</span>{% endif %}
+          {% if r.only_rss %}<span class="tag">仅RSS</span>{% endif %}
+        </td>
+        <td>
+          <span class="tag">词 {{ r.keyword_count }}</span>
+          <span class="tag">替 {{ r.replace_count }}</span>
+        </td>
+        <td>
+          {% if r.enable_rule %}<span class="tag ok">● 启用</span>
+          {% else %}<span class="tag off">○ 停用</span>{% endif %}
+        </td>
+        <td><a class="btn sm ghost" href="/admin/rules/{{ r.id }}">查看</a></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="empty">
+    没有匹配的规则。
+    {% if q or status or mode %}试试<a href="/admin/rules" style="color:#0b7bbf">清除筛选</a>。{% endif %}
+  </div>
+  {% endif %}
+</div>
+
+<div class="card" style="margin-top:16px">
+  <div style="padding:16px 18px 0">
+    <h2 style="font-size:15px;margin:0">新建规则</h2>
+    <p style="font-size:12.5px;color:#8b97a6;margin:6px 0 0">
+      填写源与目标后由主进程用 Telethon 解析实体并落库，等同于在 Bot 里执行
+      <code class="mono">/bind 源 目标</code>。
+    </p>
+  </div>
+  <div class="toolbar" style="border-top:none;padding:12px 18px 16px">
+    <input class="input" id="new-source" style="flex:1"
+           placeholder="源：@channel / t.me 链接 / 数字 ID / 名称片段">
+    <input class="input" id="new-target" style="flex:1"
+           placeholder="目标：同上（留空则发到当前频道）">
+    <button class="btn" id="btn-create-rule">创建</button>
+  </div>
+</div>
+
+<div class="note blue" style="margin-top:14px">
+  目标留空时会创建「源 → 源」的自转发规则（默认白名单模式，常用于原帖美化）。
+  若主进程内部桥不可达（未启用 RSS 子进程或桥启动失败），新建会失败并提示原因。
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  const btnCreate = document.getElementById('btn-create-rule');
+  if (btnCreate) {
+    btnCreate.addEventListener('click', async () => {
+      const source = document.getElementById('new-source').value.trim();
+      const target = document.getElementById('new-target').value.trim() || source;
+      if (!source) { window.toast('请填写源频道', 'warn'); return; }
+
+      btnCreate.disabled = true;
+      btnCreate.textContent = '创建中…';
+      try {
+        const data = await window.api('POST', '/admin/api/rules', { source, target });
+        window.toast('规则已创建', 'ok');
+        setTimeout(() => { location.href = '/admin/rules/' + data.rule_id; }, 600);
+      } catch (err) {
+        window.toast(err.message || '创建失败', 'err');
+      } finally {
+        btnCreate.disabled = false;
+        btnCreate.textContent = '创建';
+      }
+    });
+  }
+</script>
+{% endblock %}

@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine, Column, Integer, String, Boolean, ForeignKey, Enum, UniqueConstraint, inspect, text
+from sqlalchemy import create_engine, Column, Integer, String, Boolean, ForeignKey, Enum, UniqueConstraint, inspect, text, Date
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship, sessionmaker
 from enums.enums import ForwardMode, PreviewMode, MessageMode, AddMode, HandleMode
@@ -455,6 +455,53 @@ def migrate_db(engine):
 
         except Exception as e:
             logging.error(f'更新唯一约束时出错: {str(e)}')
+
+
+class ForwardStat(Base):
+    """按「日期 × 规则」累计的转发结果计数。
+
+    控制台概览用它算「今日转发 / 今日失败」。
+    写入由 `record_forward_stat` 完成，失败绝不影响转发主流程。
+    """
+    __tablename__ = 'forward_stats'
+
+    id = Column(Integer, primary_key=True)
+    day = Column(Date, nullable=False, index=True)
+    rule_id = Column(Integer, ForeignKey('forward_rules.id'), nullable=False, index=True)
+    ok_count = Column(Integer, nullable=False, default=0)
+    fail_count = Column(Integer, nullable=False, default=0)
+
+    __table_args__ = (
+        UniqueConstraint('day', 'rule_id', name='unique_day_rule_stat'),
+    )
+
+
+def record_forward_stat(session, rule_id: int, success: bool) -> None:
+    """记录一次转发结果（成功/失败各 +1）。
+
+    统计属于旁路能力：任何异常都只记 debug 日志，不向调用方抛出。
+    """
+    import datetime
+
+    try:
+        today = datetime.date.today()
+        row = (session.query(ForwardStat)
+               .filter(ForwardStat.day == today, ForwardStat.rule_id == rule_id)
+               .first())
+        if row is None:
+            row = ForwardStat(day=today, rule_id=rule_id, ok_count=0, fail_count=0)
+            session.add(row)
+        if success:
+            row.ok_count = (row.ok_count or 0) + 1
+        else:
+            row.fail_count = (row.fail_count or 0) + 1
+        session.commit()
+    except Exception:
+        try:
+            session.rollback()
+        except Exception:
+            pass
+        logging.debug('记录转发统计失败', exc_info=True)
 
 
 _engine = None

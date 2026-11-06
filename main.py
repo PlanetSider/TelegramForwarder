@@ -17,6 +17,7 @@ from rss.main import app as rss_app
 from utils.log_config import setup_logging
 from utils.constants import RSS_ENABLED
 from utils.feishu_bot import run_feishu_bot
+from utils.main_bridge import ensure_token, start_bridge
 
 # 设置Docker日志的默认配置，如果docker-compose.yml中没有配置日志选项将使用这些值
 os.environ.setdefault('DOCKER_LOG_MAX_SIZE', '10m')
@@ -108,6 +109,15 @@ async def start_clients():
         # 创建并启动聊天信息更新器
         chat_updater = ChatUpdater(user_client)
         await chat_updater.start()
+
+        # 内部桥：让 RSS/控制台子进程能查询 Telegram 状态与会话列表。
+        # 必须在 fork 出 RSS 子进程之前生成 token，子进程才能读到同一份。
+        bridge_runner = None
+        try:
+            ensure_token()
+            bridge_runner = await start_bridge()
+        except Exception as e:
+            logger.warning(f"启动内部桥失败（控制台将无法显示 Telegram 状态）: {e}")
 
         # 如果启用了 RSS 服务
         if RSS_ENABLED:

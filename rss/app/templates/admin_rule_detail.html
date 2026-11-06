@@ -1,0 +1,618 @@
+{% extends "admin_base.html" %}
+{% block title %}规则 #{{ rule.id }}{% endblock %}
+{% block crumb %}转发 / <a href="/admin/rules" style="color:inherit">规则</a> / <b>#{{ rule.id }}</b>{% endblock %}
+
+{% macro sw(name, checked) -%}
+<label class="switch"><input type="checkbox" data-field="{{ name }}" {{ 'checked' if checked else '' }}><span></span></label>
+{%- endmacro %}
+
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>{{ rule.source.name if rule.source else ('规则 ' ~ rule.id) }}</h1>
+    <p>
+      {{ rule.source.name if rule.source else '?' }}
+      <span style="color:#9aa6b4">→</span>
+      {{ rule.target.name if rule.target else '?' }}
+      {% if rule.enable_rule %}<span class="tag ok" style="margin-left:8px">● 启用</span>
+      {% else %}<span class="tag off" style="margin-left:8px">○ 停用</span>{% endif %}
+    </p>
+  </div>
+  <div class="actions">
+    <a class="btn" href="/admin/rules">返回列表</a>
+    <button class="btn primary" id="btn-save" type="button">保存改动</button>
+  </div>
+</div>
+
+<div class="note blue" style="margin-bottom:14px">
+  开关类字段改完点右上角 <b>保存改动</b> 生效；列表类（推送地址、关键字、替换）是即时保存的。
+  源/目标频道的创建与改绑需要 Telegram 实体，仍走 Bot 的 <code class="mono">/bind</code> 命令。
+</div>
+
+<div class="tabs">
+  <button class="on" data-tab="basic">基础</button>
+  <button data-tab="filter">过滤</button>
+  <button data-tab="media">媒体</button>
+  <button data-tab="ai">AI 与总结</button>
+  <button data-tab="push">推送</button>
+  <button data-tab="rss">RSS</button>
+  <button data-tab="adv">高级</button>
+</div>
+
+<!-- ------------------------------------------------------------ 基础 -->
+<div class="tabpane on" id="tab-basic">
+  <div class="grid g2">
+    <div class="card">
+      <div class="card-h"><h3>转发行为</h3></div>
+      <div class="card-b">
+        <div class="field">
+          <label>转发方式</label>
+          <div class="val">
+            {% if rule.use_bot %}<span class="tag bot">机器人转发</span>
+            <span class="hint">保留转发的“转发来源”，但受频道禁止转发限制</span>
+            {% else %}<span class="tag user">用户账号转发</span>
+            <span class="hint">可突破复制/转发保护，但需要用户账号在源频道内</span>{% endif %}
+          </div>
+        </div>
+        <div class="field">
+          <label>处理模式</label>
+          <div class="val">
+            {% if rule.handle_mode == 'EDIT' %}<span class="tag">编辑原消息</span>
+            <span class="hint">直接修改源频道里的原帖，不产生新消息（仅频道可用）</span>
+            {% else %}<span class="tag">转发为新消息</span>{% endif %}
+          </div>
+        </div>
+        <div class="field">
+          <label>消息格式</label>
+          <div class="val"><span class="tag">{{ rule.message_mode }}</span></div>
+        </div>
+        <div class="field">
+          <label>链接预览</label>
+          <div class="val"><span class="tag">
+            {% if rule.is_preview == 'on' %}开启{% elif rule.is_preview == 'off' %}关闭{% else %}跟随原消息{% endif %}
+          </span></div>
+        </div>
+        <div class="field">
+          <label>延时处理</label>
+          <div class="val">
+            {{ sw('enable_delay', rule.enable_delay) }}
+            {% if rule.enable_delay %}
+            <span class="tag">{{ rule.delay_seconds }} 秒</span>
+            <span class="hint">等待期间重新拉取消息，可拿到编辑后的内容</span>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-h"><h3>附加信息</h3></div>
+      <div class="card-b">
+        <div class="field">
+          <label>原始发送者</label>
+          <div class="val">{{ sw('is_original_sender', rule.is_original_sender) }}
+            <code class="mono">{{ rule.userinfo_template }}</code></div>
+        </div>
+        <div class="field">
+          <label>原始链接</label>
+          <div class="val">{{ sw('is_original_link', rule.is_original_link) }}
+            <code class="mono">{{ rule.original_link_template }}</code></div>
+        </div>
+        <div class="field">
+          <label>发送时间</label>
+          <div class="val">{{ sw('is_original_time', rule.is_original_time) }}
+            <code class="mono">{{ rule.time_template }}</code></div>
+        </div>
+        <div class="field">
+          <label>删除原消息</label>
+          <div class="val">{{ sw('is_delete_original', rule.is_delete_original) }}</div>
+        </div>
+        <div class="field">
+          <label>评论区按钮</label>
+          <div class="val">{{ sw('enable_comment_button', rule.enable_comment_button) }}</div>
+        </div>
+        <div class="field">
+          <label>过滤时含发送者信息</label>
+          <div class="val">{{ sw('is_filter_user_info', rule.is_filter_user_info) }}
+            <span class="hint">关键字匹配时是否把发送者名称/ID 一起参与匹配</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ------------------------------------------------------------ 过滤 -->
+<div class="tabpane" id="tab-filter">
+  <div class="card" style="margin-bottom:14px">
+    <div class="card-h"><h3>过滤模式</h3></div>
+    <div class="card-b">
+      <div class="field">
+        <label>关键字过滤</label>
+        <div class="val"><span class="tag">{{ rule.forward_mode }}</span>
+          <span class="hint">blacklist 排除 / whitelist 仅允许 / 两种组合模式</span></div>
+      </div>
+      <div class="field">
+        <label>关键字添加模式</label>
+        <div class="val"><span class="tag">{{ rule.add_mode }}</span></div>
+      </div>
+      <div class="field">
+        <label>反转名单</label>
+        <div class="val">
+          {{ sw('enable_reverse_blacklist', rule.enable_reverse_blacklist) }}<span class="hint">反转黑名单</span>
+          {{ sw('enable_reverse_whitelist', rule.enable_reverse_whitelist) }}<span class="hint">反转白名单</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="grid g2">
+    <div class="card">
+      <div class="card-h"><h3>关键字</h3><span class="sub">{{ rule.keywords|length }} 条</span></div>
+      {% if rule.keywords %}
+      <table>
+        <thead><tr><th>关键字</th><th style="width:70px">正则</th><th style="width:80px">名单</th><th style="width:60px"></th></tr></thead>
+        <tbody>
+          {% for k in rule.keywords %}
+          <tr>
+            <td><code class="mono">{{ k.keyword }}</code></td>
+            <td>{% if k.is_regex %}<span class="tag">正则</span>{% endif %}</td>
+            <td>{% if k.is_blacklist %}<span class="tag no">黑</span>{% else %}<span class="tag ok">白</span>{% endif %}</td>
+            <td><button class="btn sm danger" type="button" data-kw-del="{{ k.id }}">删</button></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <div class="empty">未设置关键字，所有消息都会进入后续过滤器</div>
+      {% endif %}
+      <div class="card-b" style="border-top:1px solid #edf1f5">
+        <div class="toolbar" style="margin:0">
+          <input class="input" id="new-kw" style="flex:1" placeholder="关键字或正则表达式">
+          <select class="input" id="new-kw-list" style="width:100px">
+            <option value="1">黑名单</option>
+            <option value="0">白名单</option>
+          </select>
+          <label class="hint" style="display:flex;align-items:center;gap:5px">
+            <input type="checkbox" id="new-kw-regex"> 正则
+          </label>
+          <button class="btn primary" type="button" id="btn-add-kw">添加</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-h"><h3>正则替换</h3>
+        <span class="sub">{% if rule.is_replace %}{{ rule.replaces|length }} 条{% else %}未启用{% endif %}</span></div>
+      {% if rule.replaces %}
+      <table>
+        <thead><tr><th>匹配</th><th>替换为</th><th style="width:60px"></th></tr></thead>
+        <tbody>
+          {% for r in rule.replaces %}
+          <tr>
+            <td><code class="mono">{{ r.pattern }}</code></td>
+            <td><code class="mono">{{ r.content or '（空）' }}</code></td>
+            <td><button class="btn sm danger" type="button" data-rp-del="{{ r.id }}">删</button></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <div class="empty">没有替换规则。正则 `.*` 会终止后续替换。</div>
+      {% endif %}
+      <div class="card-b" style="border-top:1px solid #edf1f5">
+        <div class="toolbar" style="margin:0">
+          <input class="input" id="new-rp-pattern" style="flex:1" placeholder="匹配式（正则）">
+          <input class="input" id="new-rp-content" style="flex:1" placeholder="替换为（可空）">
+          <button class="btn primary" type="button" id="btn-add-rp">添加</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ------------------------------------------------------------ 媒体 -->
+<div class="tabpane" id="tab-media">
+  <div class="grid g2">
+    <div class="card">
+      <div class="card-h"><h3>媒体类型</h3>
+        <span class="sub">{{ '已启用过滤' if rule.enable_media_type_filter else '未启用' }}</span></div>
+      <div class="card-b">
+        {% if rule.media_types %}
+        <div class="grid g2">
+          {% for key, label in [('photo','图片'),('document','文件'),('video','视频'),('audio','音频'),('voice','语音')] %}
+          <div class="field" style="margin-bottom:10px">
+            <label>{{ label }}</label>
+            <div class="val">{{ sw('media.' ~ key, rule.media_types[key]) }}</div>
+          </div>
+          {% endfor %}
+        </div>
+        {% else %}
+        <div class="empty">未配置媒体类型记录</div>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-h"><h3>大小与扩展名</h3></div>
+      <div class="card-b">
+        <div class="field">
+          <label>大小过滤</label>
+          <div class="val">
+            {{ sw('enable_media_size_filter', rule.enable_media_size_filter) }}
+            <span class="tag">上限 {{ rule.max_media_size }} MB</span>
+          </div>
+        </div>
+        <div class="field">
+          <label>超限提醒</label>
+          <div class="val">{{ sw('is_send_over_media_size_message', rule.is_send_over_media_size_message) }}</div>
+        </div>
+        <div class="field">
+          <label>扩展名过滤</label>
+          <div class="val">
+            {{ sw('enable_extension_filter', rule.enable_extension_filter) }}
+            <span class="tag">{{ rule.extension_filter_mode }}</span>
+          </div>
+        </div>
+        <div class="field">
+          <label>扩展名列表</label>
+          <div class="val">
+            {% if rule.media_extensions %}
+              {% for e in rule.media_extensions %}<span class="tag">{{ e }}</span>{% endfor %}
+            {% else %}<span class="hint">未设置</span>{% endif %}
+          </div>
+        </div>
+        <div class="field">
+          <label>媒体被过滤时放行文本</label>
+          <div class="val">{{ sw('media_allow_text', rule.media_allow_text) }}</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ------------------------------------------------------------ AI -->
+<div class="tabpane" id="tab-ai">
+  <div class="card" style="margin-bottom:14px">
+    <div class="card-h"><h3>AI 处理</h3></div>
+    <div class="card-b">
+      <div class="field">
+        <label>启用 AI</label>
+        <div class="val">{{ sw('is_ai', rule.is_ai) }}</div>
+      </div>
+      <div class="field">
+        <label>模型</label>
+        <div class="val"><span class="tag">{{ rule.ai_model or '未选择' }}</span>
+          <span class="hint">模型清单来自 config/ai_models.json</span></div>
+      </div>
+      <div class="field">
+        <label>上传图片</label>
+        <div class="val">{{ sw('enable_ai_upload_image', rule.enable_ai_upload_image) }}
+          <span class="hint">把媒体消息转 base64 交给多模态模型</span></div>
+      </div>
+      <div class="field">
+        <label>AI 后再次过滤关键字</label>
+        <div class="val">{{ sw('is_keyword_after_ai', rule.is_keyword_after_ai) }}</div>
+      </div>
+      <div class="field" style="display:block">
+        <label>提示词</label>
+        <pre class="logbox" style="max-height:180px">{{ rule.ai_prompt or '（未设置，使用全局默认）' }}</pre>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-h"><h3>定时总结</h3></div>
+    <div class="card-b">
+      <div class="field">
+        <label>启用总结</label>
+        <div class="val">{{ sw('is_summary', rule.is_summary) }}
+          <span class="tag">{{ rule.summary_time }}</span></div>
+      </div>
+      <div class="field">
+        <label>置顶总结</label>
+        <div class="val">{{ sw('is_top_summary', rule.is_top_summary) }}</div>
+      </div>
+      <div class="field" style="display:block">
+        <label>总结提示词</label>
+        <pre class="logbox" style="max-height:160px">{{ rule.summary_prompt or '（未设置，使用全局默认）' }}</pre>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ------------------------------------------------------------ 推送 -->
+<div class="tabpane" id="tab-push">
+  <div class="card" style="margin-bottom:14px">
+    <div class="card-h">
+      <h3>推送地址</h3>
+      <span class="sub">一条规则可挂多个，逐个发送</span>
+    </div>
+    <div class="card-b">
+      <div class="field">
+        <label>启用推送</label>
+        <div class="val">{{ sw('enable_push', rule.enable_push) }}</div>
+      </div>
+      <div class="field">
+        <label>仅推送不转发</label>
+        <div class="val">{{ sw('enable_only_push', rule.enable_only_push) }}
+          <span class="hint">开启后跳过 SenderFilter，消息只走推送</span></div>
+      </div>
+    </div>
+
+    {% if rule.push_channels %}
+    <table>
+      <thead><tr><th style="width:70px">ID</th><th style="width:90px">类型</th><th>地址</th><th style="width:90px">媒体</th><th style="width:90px">状态</th><th style="width:130px"></th></tr></thead>
+      <tbody>
+        {% for p in rule.push_channels %}
+        <tr>
+          <td>#{{ p.id }}</td>
+          <td>
+            {% if p.brand in ['feishu', 'lark'] %}
+              <span class="tag {{ 'rss' if p.brand == 'feishu' else 'ai' }}">{{ p.label }}</span>
+            {% else %}<span class="tag">{{ p.label }}</span>{% endif %}
+          </td>
+          <td><code class="mono">{{ p.display }}</code></td>
+          <td><span class="tag">{{ p.media_send_mode }}</span></td>
+          <td>{% if p.enabled %}<span class="tag ok">● 启用</span>{% else %}<span class="tag off">○ 停用</span>{% endif %}</td>
+          <td>
+            <button class="btn sm ghost" type="button"
+                    data-push-toggle="{{ p.id }}" data-enabled="{{ '1' if p.enabled else '0' }}">
+              {{ '停用' if p.enabled else '启用' }}</button>
+            <button class="btn sm danger" type="button" data-push-del="{{ p.id }}">删除</button>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="card-b"><div class="empty">还没有配置推送地址</div></div>
+    {% endif %}
+
+    <div class="card-b" style="border-top:1px solid #edf1f5">
+      <div class="toolbar" style="margin:0">
+        <input class="input" id="new-push-url" style="flex:1"
+               placeholder="https://open.feishu.cn/open-apis/bot/v2/hook/xxx   或   lark://token?secret=xxx">
+        <select class="input" id="new-push-mode" style="width:120px">
+          <option value="Single">单个发送</option>
+          <option value="Multiple">合并发送</option>
+        </select>
+        <button class="btn primary" type="button" id="btn-add-push">添加地址</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="note blue">
+    飞书多机器人：为每个群添加一个自定义机器人，把 webhook 依次加到这里即可，
+    某个群的消息只会进入它自己那条地址；一条规则挂多个地址时，每条都会收到同一份内容。
+    也支持 <code class="mono">lark://&lt;token&gt;?secret=xxx</code> 简写指向国际版 Lark。
+  </div>
+</div>
+
+<!-- ------------------------------------------------------------ RSS -->
+<div class="tabpane" id="tab-rss">
+  {% if rule.rss %}
+  <div class="card" style="margin-bottom:14px">
+    <div class="card-h">
+      <h3>RSS 订阅</h3>
+      <a class="right btn sm ghost" href="/rss/dashboard">在 RSS 面板编辑</a>
+    </div>
+    <div class="card-b">
+      <div class="field">
+        <label>启用</label>
+        <div class="val">
+          {% if rule.rss.enable_rss %}<span class="tag ok">● 已启用</span>{% else %}<span class="tag off">○ 未启用</span>{% endif %}
+          {{ sw('rss.enable_rss', rule.rss.enable_rss) }}
+        </div>
+      </div>
+      <div class="field"><label>标题</label>
+        <div class="val">{{ rule.rss.rule_title or '（自动）' }}</div></div>
+      <div class="field"><label>描述</label>
+        <div class="val">{{ rule.rss.rule_description or '（无）' }}</div></div>
+      <div class="field"><label>语言</label>
+        <div class="val"><span class="tag">{{ rule.rss.language }}</span></div></div>
+      <div class="field"><label>最大条目</label>
+        <div class="val"><span class="tag">{{ rule.rss.max_items }}</span></div></div>
+      <div class="field">
+        <label>自动提取</label>
+        <div class="val">
+          {% if rule.rss.is_auto_title %}<span class="tag">标题</span>{% endif %}
+          {% if rule.rss.is_auto_content %}<span class="tag">内容</span>{% endif %}
+          {% if rule.rss.is_ai_extract %}<span class="tag ai">AI 提取</span>{% endif %}
+          {% if rule.rss.is_auto_markdown_to_html %}<span class="tag">MD→HTML</span>{% endif %}
+        </div>
+      </div>
+      <div class="field">
+        <label>仅 RSS</label>
+        <div class="val">{{ sw('only_rss', rule.only_rss) }}
+          <span class="hint">开启后终止转发链，只写入 RSS</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-h"><h3>自定义正则</h3>
+      <span class="sub">按优先级从小到大执行</span></div>
+    {% if rule.rss.patterns %}
+    <table>
+      <thead><tr><th style="width:70px">优先级</th><th style="width:80px">类型</th><th>正则</th></tr></thead>
+      <tbody>
+        {% for p in rule.rss.patterns %}
+        <tr>
+          <td>{{ p.priority }}</td>
+          <td><span class="tag">{{ '标题' if p.pattern_type == 'title' else '内容' }}</span></td>
+          <td><code class="mono">{{ p.pattern }}</code></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="card-b"><div class="empty">未配置自定义正则</div></div>
+    {% endif %}
+  </div>
+  {% else %}
+  <div class="card"><div class="empty">
+    这条规则还没有 RSS 配置。去 <a href="/rss/dashboard" style="color:#0b7bbf">RSS 面板</a> 为它创建订阅源。
+  </div></div>
+  {% endif %}
+</div>
+
+<!-- ------------------------------------------------------------ 高级 -->
+<div class="tabpane" id="tab-adv">
+  <div class="grid g2">
+    <div class="card">
+      <div class="card-h"><h3>规则同步</h3></div>
+      <div class="card-b">
+        <div class="field">
+          <label>启用同步</label>
+          <div class="val">{{ sw('enable_sync', rule.enable_sync) }}</div>
+        </div>
+        <div class="field">
+          <label>同步到</label>
+          <div class="val">
+            {% if rule.syncs %}
+              {% for sid in rule.syncs %}<span class="tag">#{{ sid }}</span>{% endfor %}
+            {% else %}<span class="hint">未配置</span>{% endif %}
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-h"><h3>UFB 联动</h3></div>
+      <div class="card-b">
+        <div class="field">
+          <label>启用 UFB</label>
+          <div class="val">{{ sw('is_ufb', rule.is_ufb) }}</div>
+        </div>
+        <div class="field"><label>域名</label>
+          <div class="val">{{ rule.ufb_domain or '（未设置）' }}</div></div>
+        <div class="field"><label>板块</label>
+          <div class="val"><span class="tag">{{ rule.ufb_item }}</span></div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:14px">
+    <div class="card-h"><h3>标识</h3></div>
+    <div class="card-b">
+      <div class="grid g3">
+        <div><div class="hint">源 chat_id</div>
+          <code class="mono">{{ rule.source.tg_id if rule.source else '?' }}</code></div>
+        <div><div class="hint">目标 chat_id</div>
+          <code class="mono">{{ rule.target.tg_id if rule.target else '?' }}</code></div>
+        <div><div class="hint">规则 ID</div>
+          <code class="mono">{{ rule.id }}</code></div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  var RULE_ID = {{ rule.id }};
+
+  /* ---------------------------------------------------- 字段保存 */
+  var saveBtn = document.getElementById('btn-save');
+  if (saveBtn) {
+    saveBtn.addEventListener('click', function () {
+      saveBtn.disabled = true;
+      var payload = window.collectFields(document);
+      window.api('POST', '/admin/api/rules/' + RULE_ID, payload)
+        .then(function (d) {
+          window.toast('已保存 ' + (d.updated || []).length + ' 项', 'ok');
+          if (d.skipped && d.skipped.length) {
+            window.toast('忽略未知字段：' + d.skipped.join(', '), 'info');
+          }
+        })
+        .catch(function (e) { window.toast(e.message, 'error'); })
+        .then(function () { saveBtn.disabled = false; });
+    });
+  }
+
+  /* ---------------------------------------------------- 推送地址 */
+  var addPush = document.getElementById('btn-add-push');
+  if (addPush) {
+    addPush.addEventListener('click', function () {
+      var url = (document.getElementById('new-push-url').value || '').trim();
+      var mode = document.getElementById('new-push-mode').value;
+      if (!url) { window.toast('请填写推送地址', 'error'); return; }
+      addPush.disabled = true;
+      window.api('POST', '/admin/api/rules/' + RULE_ID + '/push',
+                 { url: url, media_send_mode: mode })
+        .then(function () { window.toast('已添加，刷新页面可见', 'ok'); setTimeout(function () { location.reload(); }, 600); })
+        .catch(function (e) { window.toast(e.message, 'error'); addPush.disabled = false; });
+    });
+  }
+
+  document.querySelectorAll('[data-push-toggle]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var enabled = btn.dataset.enabled !== '1';
+      window.api('POST', '/admin/api/push/' + btn.dataset.pushToggle + '/toggle',
+                 { enabled: enabled })
+        .then(function () { window.toast(enabled ? '已启用' : '已停用', 'ok'); setTimeout(function () { location.reload(); }, 500); })
+        .catch(function (e) { window.toast(e.message, 'error'); });
+    });
+  });
+
+  document.querySelectorAll('[data-push-del]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      if (!confirm('确定删除这条推送地址？')) return;
+      window.api('DELETE', '/admin/api/push/' + btn.dataset.pushDel)
+        .then(function () { window.toast('已删除', 'ok'); setTimeout(function () { location.reload(); }, 500); })
+        .catch(function (e) { window.toast(e.message, 'error'); });
+    });
+  });
+
+  /* ---------------------------------------------------- 关键字 */
+  var addKw = document.getElementById('btn-add-kw');
+  if (addKw) {
+    addKw.addEventListener('click', function () {
+      var kw = (document.getElementById('new-kw').value || '').trim();
+      if (!kw) { window.toast('请填写关键字', 'error'); return; }
+      addKw.disabled = true;
+      window.api('POST', '/admin/api/rules/' + RULE_ID + '/keywords', {
+        keyword: kw,
+        is_regex: document.getElementById('new-kw-regex').checked,
+        is_blacklist: document.getElementById('new-kw-list').value === '1'
+      })
+        .then(function () { window.toast('已添加', 'ok'); setTimeout(function () { location.reload(); }, 500); })
+        .catch(function (e) { window.toast(e.message, 'error'); addKw.disabled = false; });
+    });
+  }
+
+  document.querySelectorAll('[data-kw-del]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      window.api('DELETE', '/admin/api/keywords/' + btn.dataset.kwDel)
+        .then(function () { window.toast('已删除', 'ok'); setTimeout(function () { location.reload(); }, 500); })
+        .catch(function (e) { window.toast(e.message, 'error'); });
+    });
+  });
+
+  /* ---------------------------------------------------- 替换 */
+  var addRp = document.getElementById('btn-add-rp');
+  if (addRp) {
+    addRp.addEventListener('click', function () {
+      var pattern = (document.getElementById('new-rp-pattern').value || '').trim();
+      if (!pattern) { window.toast('请填写匹配式', 'error'); return; }
+      addRp.disabled = true;
+      window.api('POST', '/admin/api/rules/' + RULE_ID + '/replaces', {
+        pattern: pattern,
+        content: document.getElementById('new-rp-content').value || ''
+      })
+        .then(function () { window.toast('已添加', 'ok'); setTimeout(function () { location.reload(); }, 500); })
+        .catch(function (e) { window.toast(e.message, 'error'); addRp.disabled = false; });
+    });
+  }
+
+  document.querySelectorAll('[data-rp-del]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      window.api('DELETE', '/admin/api/replaces/' + btn.dataset.rpDel)
+        .then(function () { window.toast('已删除', 'ok'); setTimeout(function () { location.reload(); }, 500); })
+        .catch(function (e) { window.toast(e.message, 'error'); });
+    });
+  });
+})();
+</script>
+{% endblock %}

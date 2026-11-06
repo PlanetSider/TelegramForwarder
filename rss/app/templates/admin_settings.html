@@ -1,0 +1,143 @@
+{% extends "admin_base.html" %}
+{% block title %}全局设置{% endblock %}
+{% block crumb %}配置 / <b>全局设置</b>{% endblock %}
+
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>全局设置</h1>
+    <p>进程级默认值与凭据状态；单条规则的差异在规则详情页调整</p>
+  </div>
+  <div class="actions"><a class="btn" href="/admin/settings">刷新</a></div>
+</div>
+
+<div class="note blue" style="margin-bottom:14px">
+  本页当前为 <b>只读</b>。环境变量类配置需要修改 <code class="mono">.env</code> 并重启容器；
+  文件类配置（AI 模型清单、总结时间、延时选项等）的在线编辑在 P3 接入。
+</div>
+
+<div class="grid g2" style="margin-bottom:16px">
+  <div class="card">
+    <div class="card-h"><h3>默认值</h3><span class="sub">新建规则时继承</span></div>
+    <div class="card-b">
+      <div class="field"><label>时区</label>
+        <div class="val"><span class="tag">{{ defaults.timezone }}</span>
+          <span class="hint">DEFAULT_TIMEZONE</span></div></div>
+      <div class="field"><label>默认 AI 模型</label>
+        <div class="val"><span class="tag">{{ defaults.ai_model }}</span>
+          <span class="hint">DEFAULT_AI_MODEL</span></div></div>
+      <div class="field"><label>分页</label>
+        <div class="val"><span class="tag">规则 {{ defaults.rules_per_page }}</span>
+          <span class="tag">关键字 {{ defaults.keywords_per_page }}</span></div></div>
+      <div class="field"><label>模块开关</label>
+        <div class="val">
+          <span class="tag {{ 'ok' if defaults.rss_enabled else 'off' }}">RSS {{ '开启' if defaults.rss_enabled else '关闭' }}</span>
+          <span class="tag {{ 'ok' if defaults.ufb_enabled else 'off' }}">UFB {{ '开启' if defaults.ufb_enabled else '关闭' }}</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-h"><h3>AI 凭据</h3><span class="sub">来自 .env</span></div>
+    <div class="card-b">
+      {% for prefix, ok in key_status.items() %}
+      <div class="field" style="margin-bottom:8px">
+        <label>{{ prefix }}</label>
+        <div class="val">
+          {% if ok %}<span class="tag ok">● 已配置</span>
+          {% else %}<span class="tag off">○ 未配置</span>{% endif %}
+        </div>
+      </div>
+      {% endfor %}
+      <div class="hint" style="margin-top:10px">
+        变量名形如 <code class="mono">OPENAI_API_KEY</code> / <code class="mono">CLAUDE_API_KEY</code>，
+        也可用 <code class="mono">*_API_BASE</code> 指向兼容网关。
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card" style="margin-bottom:16px">
+  <div class="card-h"><h3>AI 模型清单</h3><span class="sub">config/ai_models.json</span></div>
+  <div class="card-b">
+    {% if ai_models %}
+    <div class="grid g2">
+      {% for provider, models in ai_models.items() %}
+      <div style="margin-bottom:12px">
+        <div style="font-size:12px;color:#6b7684;margin-bottom:6px">{{ provider }}</div>
+        {% for m in models %}<span class="tag">{{ m }}</span>{% endfor %}
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="empty">未读取到模型配置，请检查 <code class="mono">config/ai_models.json</code></div>
+    {% endif %}
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-h"><h3>提示词默认值</h3></div>
+  <div class="card-b">
+    <div class="field" style="display:block">
+      <label>AI 改写提示词</label>
+      <pre class="logbox" style="max-height:120px">{{ defaults.ai_prompt }}</pre>
+    </div>
+    <div class="field" style="display:block;margin-top:12px">
+      <label>总结提示词</label>
+      <pre class="logbox" style="max-height:120px">{{ defaults.summary_prompt }}</pre>
+    </div>
+  </div>
+</div>
+
+<div class="card" style="margin-top:16px">
+  <div class="card-h">
+    <h3>运行时配置文件</h3>
+    <span class="sub">config/ 目录 · 保存前会做格式校验</span>
+  </div>
+  <div class="card-b">
+    {% if configs %}
+      {% for c in configs %}
+      <div style="margin-bottom:20px">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+          <code class="mono">{{ c.name }}</code>
+          <span class="hint">{{ c.label }}</span>
+          {% if not c.exists %}<span class="tag off">文件不存在</span>{% endif %}
+          <div class="spacer" style="flex:1"></div>
+          <button class="btn sm primary" type="button" data-cfg-save="{{ c.name }}">保存</button>
+        </div>
+        <textarea data-cfg="{{ c.name }}" rows="5" spellcheck="false"
+                  style="width:100%;box-sizing:border-box;padding:10px 12px;border:1px solid #dbe2ea;border-radius:8px;
+                         font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12.5px;line-height:1.6;
+                         color:#22303f;background:#fbfcfd;resize:vertical">{{ c.content }}</textarea>
+        {% if c.error %}<div class="hint" style="color:#d93025;margin-top:4px">{{ c.error }}</div>{% endif %}
+      </div>
+      {% endfor %}
+    {% else %}
+      <div class="empty">没有可编辑的配置文件</div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  document.querySelectorAll('[data-cfg-save]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var name = btn.dataset.cfgSave;
+      var area = document.querySelector('[data-cfg="' + name + '"]');
+      if (!area) return;
+      btn.disabled = true;
+      window.api('POST', '/admin/api/configs/' + encodeURIComponent(name),
+                 { content: area.value })
+        .then(function (d) {
+          window.toast(name + ' 已保存（' + (d.lines || 0) + ' 行）', 'ok');
+        })
+        .catch(function (e) { window.toast(e.message, 'error'); })
+        .then(function () { btn.disabled = false; });
+    });
+  });
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,144 @@
+{% extends "admin_base.html" %}
+{% block title %}概览{% endblock %}
+{% block crumb %}监控 / <b>概览</b>{% endblock %}
+
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>概览</h1>
+    <p>规则健康、转发量与服务状态的单一入口</p>
+  </div>
+  <div class="actions">
+    <a class="btn" href="/admin">刷新</a>
+    <a class="btn primary" href="/admin/rules">管理规则</a>
+  </div>
+</div>
+
+<div class="grid g4" style="margin-bottom:16px">
+  <div class="card kpi">
+    <div class="label">启用中的规则</div>
+    <div class="val">{{ overview.enabled }}
+      <span style="font-size:14px;color:#8b97a6;font-weight:400">/ {{ overview.total }}</span></div>
+    <div class="delta">{{ overview.disabled }} 条已停用</div>
+  </div>
+  <div class="card kpi">
+    <div class="label">今日转发</div>
+    <div class="val">{{ overview.today_ok }}</div>
+    <div class="delta">统计自 ForwardStat（转发时累加）</div>
+  </div>
+  <div class="card kpi">
+    <div class="label">今日失败</div>
+    <div class="val" style="color:{{ '#d93025' if overview.today_fail else 'inherit' }}">{{ overview.today_fail }}</div>
+    <div class="delta">过滤链中断或发送异常</div>
+  </div>
+  <div class="card kpi">
+    <div class="label">RSS / 推送 / AI</div>
+    <div class="val" style="font-size:22px">
+      {{ overview.rss_enabled }} / {{ overview.push_enabled }} / {{ overview.ai_enabled }}
+    </div>
+    <div class="delta">已启用的规则数</div>
+  </div>
+</div>
+
+<div class="grid g2" style="margin-bottom:16px">
+  <div class="card">
+    <div class="card-h">
+      <h3>规则健康</h3>
+      <span class="sub">启用中的前 {{ health|length }} 条</span>
+      <div class="right"><a class="btn sm ghost" href="/admin/rules">全部</a></div>
+    </div>
+    {% if health %}
+    <table>
+      <thead><tr><th>规则</th><th>方式</th><th>能力</th><th>状态</th></tr></thead>
+      <tbody>
+        {% for h in health %}
+        <tr>
+          <td><b>#{{ h.id }}</b> {{ h.name }}</td>
+          <td>
+            {% if h.use_bot %}<span class="tag bot">机器人</span>
+            {% else %}<span class="tag user">用户账号</span>{% endif %}
+          </td>
+          <td>
+            {% if h.is_ai %}<span class="tag ai">AI</span>{% endif %}
+            {% if h.enable_rss %}<span class="tag rss">RSS</span>{% endif %}
+            {% if not h.is_ai and not h.enable_rss %}<span class="tag">基础</span>{% endif %}
+          </td>
+          <td><span class="tag ok">● 运行中</span></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="empty">还没有创建任何规则，去 <a href="/admin/rules" style="color:#0b7bbf">规则页</a> 看看</div>
+    {% endif %}
+  </div>
+
+  <div class="card">
+    <div class="card-h"><h3>服务状态</h3><span class="sub">本进程可见的子系统</span></div>
+    <div class="card-b">
+      <div class="grid g2">
+        <div>
+          <div style="font-size:12px;color:#6b7684">RSS 服务</div>
+          <div style="margin-top:5px"><span class="tag ok">● 运行中</span></div>
+        </div>
+        <div>
+          <div style="font-size:12px;color:#6b7684">数据库</div>
+          <div style="margin-top:5px"><span class="tag ok">● 已连接</span></div>
+        </div>
+        <div>
+          <div style="font-size:12px;color:#6b7684">Telegram 用户账号</div>
+          <div style="margin-top:5px">
+            {% if telegram and telegram.telegram.user_connected %}<span class="tag ok">● 在线</span>
+            {% elif telegram %}<span class="tag no">○ 离线</span>
+            {% else %}<span class="tag off">○ 主进程不可达</span>{% endif %}
+          </div>
+        </div>
+        <div>
+          <div style="font-size:12px;color:#6b7684">Telegram 机器人</div>
+          <div style="margin-top:5px">
+            {% if telegram and telegram.telegram.bot_connected %}
+              <span class="tag ok">● 在线</span>
+              {% if telegram.telegram.bot_username %}
+              <span class="hint">@{{ telegram.telegram.bot_username }}</span>
+              {% endif %}
+            {% elif telegram %}<span class="tag no">○ 离线</span>
+            {% else %}<span class="tag off">○ 主进程不可达</span>{% endif %}
+          </div>
+        </div>
+      </div>
+      <div class="note blue" style="margin-top:14px">
+        {% if telegram %}
+          Telegram 状态经主进程内部桥（127.0.0.1:9805）只读获取。
+          飞书应用机器人是否连接需查看容器日志中的 <code class="mono">飞书</code> 相关输出。
+        {% else %}
+          主进程内部桥不可达：可能未启用 RSS 子进程、桥启动失败，
+          或本进程不是由主进程 fork 出来的。此时控制台只能管理数据库配置。
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-h">
+    <h3>转发方式分布</h3>
+    <span class="sub">规则级统计</span>
+  </div>
+  <div class="card-b">
+    <div class="grid g3">
+      <div>
+        <div style="font-size:12px;color:#6b7684">机器人转发</div>
+        <div style="font-size:20px;font-weight:600;margin-top:4px">{{ overview.bot_mode }}</div>
+      </div>
+      <div>
+        <div style="font-size:12px;color:#6b7684">用户账号转发</div>
+        <div style="font-size:20px;font-weight:600;margin-top:4px">{{ overview.user_mode }}</div>
+      </div>
+      <div>
+        <div style="font-size:12px;color:#6b7684">仅推送（不转发）</div>
+        <div style="font-size:20px;font-weight:600;margin-top:4px">{{ overview.push_enabled }}</div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

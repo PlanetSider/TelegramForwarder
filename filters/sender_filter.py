@@ -84,16 +84,42 @@ class SenderFilter(BaseFilter):
                 await self._send_text_message(context, target_chat_id, parse_mode)
                 
             logger.info(f'消息已发送到: {target_chat.name} ({target_chat_id})')
+            self._record_stat(context, True)
             return True
         except FloodWaitError as e:
             wait_time = e.seconds
             logger.error(f'发送消息频率限制，需要等待 {wait_time} 秒')
             context.errors.append(f"发送消息频率限制，需要等待 {wait_time} 秒")
+            self._record_stat(context, False)
             return False
         except Exception as e:
             logger.error(f'发送消息时出错: {str(e)}')
             context.errors.append(f"发送消息错误: {str(e)}")
+            self._record_stat(context, False)
             return False
+
+    def _record_stat(self, context, success: bool):
+        """旁路记录转发统计（控制台概览用）。
+
+        统计失败不能影响消息发送，因此整段吞掉异常只留 debug 日志。
+        """
+        try:
+            rule_id = context.rule.id
+        except Exception:
+            return
+        session = None
+        try:
+            from models.models import get_session, record_forward_stat
+            session = get_session()
+            record_forward_stat(session, rule_id, success)
+        except Exception:
+            logger.debug('记录转发统计失败', exc_info=True)
+        finally:
+            if session is not None:
+                try:
+                    session.close()
+                except Exception:
+                    pass
     
     async def _send_media_group(self, context, target_chat_id, parse_mode):
         """发送媒体组消息"""

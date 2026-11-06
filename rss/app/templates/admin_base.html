@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}控制台{% endblock %} · TG Forwarder</title>
+  <link rel="stylesheet" href="/static/admin.css">
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="logo">TG</div>
+      <div><b>Forwarder</b><span>控制台</span></div>
+    </div>
+    <nav class="nav">
+      <div class="nav-group">监控</div>
+      <a href="/admin" class="{{ 'on' if active == 'dashboard' else '' }}">
+        <span class="ico">◎</span>概览</a>
+      <a href="/admin/logs" class="{{ 'on' if active == 'logs' else '' }}">
+        <span class="ico">≡</span>日志与状态</a>
+      <div class="nav-group">转发</div>
+      <a href="/admin/rules" class="{{ 'on' if active == 'rules' else '' }}">
+        <span class="ico">▤</span>规则</a>
+      <div class="nav-group">配置</div>
+      <a href="/admin/settings" class="{{ 'on' if active == 'settings' else '' }}">
+        <span class="ico">⚙</span>全局设置</a>
+      <div class="nav-group">原有面板</div>
+      <a href="/rss/dashboard"><span class="ico">◫</span>RSS 订阅</a>
+    </nav>
+    <div class="side-foot">
+      <div><span class="dot"></span>服务运行中</div>
+      <div style="margin-top:5px;opacity:.7">{{ user.username if user else '' }}</div>
+    </div>
+  </aside>
+
+  <div class="main">
+    <header class="topbar">
+      <div class="crumb">{% block crumb %}控制台{% endblock %}</div>
+      <div class="spacer"></div>
+      <a class="btn sm ghost" href="/logout">退出</a>
+      <div class="avatar">{{ (user.username[:1] | upper) if user else '?' }}</div>
+    </header>
+
+    <div class="content">
+      {% block content %}{% endblock %}
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+<script src="/static/admin.js"></script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

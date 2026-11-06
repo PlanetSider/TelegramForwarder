@@ -1,0 +1,119 @@
+{% extends "admin_base.html" %}
+{% block title %}日志与状态{% endblock %}
+{% block crumb %}监控 / <b>日志与状态</b>{% endblock %}
+
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>日志与状态</h1>
+    <p>进程内环形缓冲（内存，最多 2000 条）；容器内完整日志仍用 <code class="mono">docker logs</code></p>
+  </div>
+  <div class="actions">
+    <button class="btn" id="btn-refresh" type="button">刷新</button>
+    <label class="switch" style="margin-left:6px">
+      <input type="checkbox" id="auto-refresh"><span></span>
+    </label>
+    <span class="hint" style="align-self:center">自动刷新（5s）</span>
+  </div>
+</div>
+
+<form class="toolbar" method="get" action="/admin/logs">
+  <select class="input" name="level">
+    <option value="" {{ 'selected' if not level else '' }}>全部级别</option>
+    {% for lv in ['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'] %}
+    <option value="{{ lv }}" {{ 'selected' if level == lv else '' }}>{{ lv }}</option>
+    {% endfor %}
+  </select>
+  <input class="input" type="text" name="q" value="{{ q }}" placeholder="搜索关键字或 logger 名…">
+  <button class="btn" type="submit">筛选</button>
+  <div class="spacer"></div>
+  <span class="sub" style="font-size:12px;color:#8b97a6" id="count">{{ entries|length }} 条</span>
+</form>
+
+<div class="card">
+  <div class="logbox" id="logbox">
+    {% if entries %}
+      {% for e in entries %}
+      <div class="logline lv-{{ e.level|lower }}">
+        <span class="t">{{ e.ts }}</span>
+        <span class="lv">{{ e.level }}</span>
+        <span class="src">{{ e.name }}</span>
+        <span class="msg">{{ e.msg }}</span>
+      </div>
+      {% endfor %}
+    {% else %}
+      <div class="empty">
+        暂无日志。若刚启动且 RSS 未开启，本进程只记录 RSS 自己的日志；
+        主进程的转发日志在容器标准输出中。
+      </div>
+    {% endif %}
+  </div>
+</div>
+
+<div class="note blue" style="margin-top:14px">
+  本缓冲由 <code class="mono">utils/log_buffer.py</code> 挂到当前进程的 root logger。
+  RSS 面板是 <code class="mono">multiprocessing</code> 子进程，看到的是子进程日志；
+  主进程（Telegram 监听 + 转发）的日志需要 P4 的主进程接口转发过来。
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  const box = document.getElementById('logbox');
+  const count = document.getElementById('count');
+  const auto = document.getElementById('auto-refresh');
+  let timer = null;
+
+  function levelClass(lv) { return 'lv-' + String(lv || '').toLowerCase(); }
+
+  function render(items) {
+    if (!items.length) {
+      box.innerHTML = '<div class="empty">暂无匹配日志</div>';
+      return;
+    }
+    box.innerHTML = items.map(function (e) {
+      const esc = function (s) {
+        return String(s).replace(/[&<>]/g, function (c) {
+          return {'&': '&amp;', '<': '&lt;', '>': '&gt;'}[c];
+        });
+      };
+      return '<div class="logline ' + levelClass(e.level) + '">' +
+        '<span class="t">' + esc(e.ts) + '</span>' +
+        '<span class="lv">' + esc(e.level) + '</span>' +
+        '<span class="src">' + esc(e.name) + '</span>' +
+        '<span class="msg">' + esc(e.msg) + '</span></div>';
+    }).join('');
+    count.textContent = items.length + ' 条';
+  }
+
+  function pull() {
+    const params = new URLSearchParams(window.location.search);
+    const qs = new URLSearchParams();
+    const lv = params.get('level') || '';
+    const q = params.get('q') || '';
+    if (lv) qs.set('level', lv);
+    if (q) qs.set('q', q);
+    qs.set('limit', '300');
+    fetch('/admin/api/logs?' + qs.toString(), { credentials: 'same-origin' })
+      .then(function (r) { return r.json(); })
+      .then(function (d) { if (d && d.ok) render(d.entries || []); })
+      .catch(function () { /* 静默，手动刷新兜底 */ });
+  }
+
+  document.getElementById('btn-refresh').addEventListener('click', pull);
+
+  auto.addEventListener('change', function () {
+    if (auto.checked) {
+      timer = setInterval(pull, 5000);
+      window.__feishuAdminLogsTip && window.__feishuAdminLogsTip();
+    } else if (timer) {
+      clearInterval(timer);
+      timer = null;
+    }
+  });
+
+  box.scrollTop = box.scrollHeight;
+})();
+</script>
+{% endblock %}

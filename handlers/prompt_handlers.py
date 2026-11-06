@@ -1,4 +1,5 @@
 import logging
+import apprise
 from models.models import get_session, ForwardRule, RuleSync
 from managers.state_manager import state_manager
 from utils.common import get_ai_settings_text
@@ -8,9 +9,24 @@ from utils.common import get_bot_client
 from utils.common import get_main_module
 import traceback
 from utils.auto_delete import send_message_and_delete
+from utils.auto_delete import reply_and_delete
+from utils.feishu import parse_feishu_url
 from models.models import PushConfig
 
 logger = logging.getLogger(__name__)
+
+
+def _is_valid_push_url(url: str) -> bool:
+    """推送地址是否可被识别：飞书 / Lark 自定义机器人，或 Apprise 支持的协议。"""
+    if not url:
+        return False
+    if parse_feishu_url(url) is not None:
+        return True
+    try:
+        return bool(apprise.Apprise().add(url))
+    except Exception:
+        return False
+
 
 async def handle_prompt_setting(event, client, sender_id, chat_id, current_state, message):
     """处理设置提示词的逻辑"""
@@ -172,6 +188,19 @@ async def handle_add_push_channel(event, client, sender_id, chat_id, rule_id, me
         # 获取用户输入的推送频道信息
         push_channel = event.message.text.strip()
         logger.info(f"用户输入的推送频道: {push_channel}")
+
+        # 先校验地址，避免无效地址被静默保存、直到转发时才失败
+        if not _is_valid_push_url(push_channel):
+            logger.warning(f"推送地址无法识别: {push_channel}")
+            await reply_and_delete(
+                event,
+                "❌ 推送地址无法识别，请检查格式后重试。\n\n"
+                "支持 Apprise 协议，如 `ntfy://ntfy.sh/你的主题名`\n"
+                "以及飞书 / Lark 自定义机器人：\n"
+                "`feishu://TOKEN?secret=SECRET`\n"
+                "`lark://TOKEN?secret=SECRET`"
+            )
+            return False
         
         try:
             # 创建新的推送配置

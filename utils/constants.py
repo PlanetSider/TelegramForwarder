@@ -101,8 +101,14 @@ MEDIA_SETTINGS_TEXT = """
 """
 PUSH_SETTINGS_TEXT = """
 推送设置：
-请前往 https://github.com/caronc/apprise/wiki 查看添加推送配置格式说明
+支持 Apprise 全部格式，详见 https://github.com/caronc/apprise/wiki
 如 `ntfy://ntfy.sh/你的主题名`
+
+飞书 / Lark 自定义机器人（本程序内置支持，需先在群聊里添加"自定义机器人"并复制 webhook）：
+`feishu://TOKEN?secret=SECRET`   中国版飞书 open.feishu.cn
+`lark://TOKEN?secret=SECRET`     Lark 国际版 open.larksuite.com
+也可直接填完整地址 `https://open.feishu.cn/open-apis/bot/v2/hook/TOKEN`
+secret 仅在机器人开启了"签名校验"时才需要，没有就省略
 """
 
 

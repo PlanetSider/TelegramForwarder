@@ -9,6 +9,7 @@ import traceback
 from filters.base_filter import BaseFilter
 from models.models import get_session, PushConfig
 from enums.enums import PreviewMode
+from utils.feishu import parse_feishu_url, send_feishu_webhook
 
 logger = logging.getLogger(__name__)
 
@@ -127,7 +128,7 @@ class PushFilter(BaseFilter):
                     text_to_send += context.original_link
                 
                 # 发送文本推送
-                await self._send_push_notification(push_configs, text_to_send)
+                await self._send_push_notification(push_configs, text_to_send, context=context)
                 return
             
             # 检查是否有媒体组消息但没有媒体文件（这是关键修复）
@@ -199,7 +200,8 @@ class PushFilter(BaseFilter):
                                 [config], 
                                 caption_text or f"收到一组媒体文件 (共{len(valid_files)}个)", 
                                 None,  # 不使用单附件参数
-                                valid_files  # 使用多附件参数
+                                valid_files,  # 使用多附件参数
+                                context=context
                             )
                             processed_files.extend(valid_files)
                         except Exception as e:
@@ -208,7 +210,7 @@ class PushFilter(BaseFilter):
                             for i, file_path in enumerate(valid_files):
                                 # 第一个文件使用完整文本，后续文件使用简短描述
                                 file_caption = caption_text if i == 0 else f"媒体组的第 {i+1} 个文件"
-                                await self._send_push_notification([config], file_caption, file_path)
+                                await self._send_push_notification([config], file_caption, file_path, context=context)
                                 processed_files.append(file_path)
                     # 逐个发送文件
                     else:
@@ -219,7 +221,7 @@ class PushFilter(BaseFilter):
                             else:
                                 file_caption = f"媒体组的第 {i+1} 个文件" if len(valid_files) > 1 else ""
                             
-                            await self._send_push_notification([config], file_caption, file_path)
+                            await self._send_push_notification([config], file_caption, file_path, context=context)
                             processed_files.append(file_path)
                 
         except Exception as e:
@@ -277,7 +279,7 @@ class PushFilter(BaseFilter):
                 text_to_send += original_link
             
             # 发送文本推送
-            await self._send_push_notification(push_configs, text_to_send)
+            await self._send_push_notification(push_configs, text_to_send, context=context)
             return processed_files
         
         # 处理媒体文件
@@ -330,7 +332,7 @@ class PushFilter(BaseFilter):
                         #     caption = f"收到一个文件 ({ext})"
                     
                     # 发送推送
-                    await self._send_push_notification(push_configs, caption, file_path)
+                    await self._send_push_notification(push_configs, caption, file_path, context=context)
                     # 添加到已处理文件列表
                     processed_files.append(file_path)
                     
@@ -379,13 +381,13 @@ class PushFilter(BaseFilter):
             message_text += context.original_link
         
         # 发送推送
-        await self._send_push_notification(push_configs, message_text)
+        await self._send_push_notification(push_configs, message_text, context=context)
         logger.info(f'文本消息推送已发送')
         
         # 返回空列表，表示没有处理任何文件
         return []
     
-    async def _send_push_notification(self, push_configs, body, attachment=None, all_attachments=None):
+    async def _send_push_notification(self, push_configs, body, attachment=None, all_attachments=None, context=None):
         """发送推送通知"""
         if not body and not attachment and not all_attachments:
             logger.warning('没有内容可推送')
@@ -393,15 +395,33 @@ class PushFilter(BaseFilter):
         
         for config in push_configs:
             try:
+                service_url = config.push_channel
+
+                # 飞书 / Lark 自定义机器人：apprise 1.9.2 不带 lark 插件，这里单独处理
+                feishu_target = parse_feishu_url(service_url)
+                if feishu_target is not None:
+                    if attachment or all_attachments:
+                        logger.warning(f'{feishu_target.label}自定义机器人不支持附件，已降级为纯文本推送')
+                    text = body or f"收到{len(all_attachments or [])}个媒体文件"
+                    ok, detail = await send_feishu_webhook(feishu_target, text)
+                    if ok:
+                        logger.info(f'{feishu_target.label}推送发送成功: {feishu_target.masked_url}')
+                    else:
+                        logger.error(f'{feishu_target.label}推送发送失败: {feishu_target.masked_url} - {detail}')
+                        if context is not None:
+                            context.errors.append(f'{feishu_target.label}推送失败: {detail}')
+                    continue
+
                 # 创建Apprise对象
                 apobj = apprise.Apprise()
                 
                 # 添加推送服务
-                service_url = config.push_channel
                 if apobj.add(service_url):
                     logger.info(f'成功添加推送服务: {service_url}')
                 else:
                     logger.error(f'添加推送服务失败: {service_url}')
+                    if context is not None:
+                        context.errors.append(f'推送服务地址无效: {service_url}')
                     continue
                 
                 # 发送推送
@@ -433,7 +453,11 @@ class PushFilter(BaseFilter):
                     logger.info(f'推送发送成功: {service_url}')
                 else:
                     logger.error(f'推送发送失败: {service_url}')
+                    if context is not None:
+                        context.errors.append(f'推送发送失败: {service_url}')
                 
             except Exception as e:
                 logger.error(f'发送推送时出错: {str(e)}')
                 logger.error(traceback.format_exc())
+                if context is not None:
+                    context.errors.append(f'推送出错: {str(e)}')

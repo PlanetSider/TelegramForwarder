@@ -16,6 +16,7 @@ from handlers.bot_handler import send_welcome_message
 from rss.main import app as rss_app
 from utils.log_config import setup_logging
 from utils.constants import RSS_ENABLED
+from utils.feishu_bot import run_feishu_bot
 
 # 设置Docker日志的默认配置，如果docker-compose.yml中没有配置日志选项将使用这些值
 os.environ.setdefault('DOCKER_LOG_MAX_SIZE', '10m')
@@ -127,6 +128,10 @@ async def start_clients():
                 logger.exception(e)
         else:
             logger.info("RSS 服务未启用")
+
+        # 启动飞书应用机器人（未配置 FEISHU_APP_ID/SECRET 时会在内部安静退出）
+        asyncio.create_task(run_feishu_bot())
+        logger.info("飞书应用机器人任务已创建")
 
         # 发送欢迎消息
         await send_welcome_message(bot_client)

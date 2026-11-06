@@ -38,6 +38,23 @@ class StateManager:
             del self._states[key]
             logger.info(f"清除状态 - key: {key}")
         logger.debug(f"当前所有状态: {self._states}")  # 改为 debug 级别
+
+    def clear_state_if(self, user_id: int, chat_id: int, expected_state: Optional[str] = None) -> bool:
+        """仅当当前状态与 expected_state 一致时才清除，避免超时任务误清后来设置的新状态"""
+        key = (user_id, chat_id)
+        state_data = self._states.get(key)
+        if not state_data:
+            return False
+        current_state = state_data[0]
+        if expected_state is not None and current_state != expected_state:
+            logger.info(
+                f"状态已被替换，跳过超时清除 - key: {key}, 期望: {expected_state}, 当前: {current_state}"
+            )
+            return False
+        del self._states[key]
+        logger.info(f"清除状态 - key: {key}")
+        logger.debug(f"当前所有状态: {self._states}")
+        return True
     
     def check_state(self) -> bool:
         """检查是否存在状态"""

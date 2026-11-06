@@ -3,6 +3,7 @@ import os
 import logging
 from utils.common import get_main_module, get_user_id
 from utils.constants import TEMP_DIR
+from utils.auto_delete import reply_and_delete
 
 logger = logging.getLogger(__name__)
 

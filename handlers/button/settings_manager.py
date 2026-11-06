@@ -495,7 +495,7 @@ async def create_buttons(rule):
             )
         ])
 
-        if RSS_ENABLED == 'false':
+        if not RSS_ENABLED:
             # 处理模式
             buttons.append([
                 Button.inline(
@@ -601,7 +601,7 @@ async def create_buttons(rule):
                 )
             ])
 
-            if UFB_ENABLED == 'true':
+            if UFB_ENABLED:
                 buttons.append([
                     Button.inline(
                         f"☁️ UFB同步: {RULE_SETTINGS['is_ufb']['values'][rule.is_ufb]}",

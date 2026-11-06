@@ -7,7 +7,7 @@ from models.db_operations import DBOperations
 import jwt
 from datetime import datetime, timedelta
 import pytz
-from utils.constants import DEFAULT_TIMEZONE
+from utils.constants import DEFAULT_TIMEZONE, RSS_DATA_DIR
 from typing import Optional
 from sqlalchemy.orm import joinedload
 import models.models as models
@@ -19,7 +19,36 @@ templates = Jinja2Templates(directory="rss/app/templates")
 db_ops = None
 
 # JWT 配置
-SECRET_KEY = secrets.token_hex(32)
+def _load_secret_key() -> str:
+    """优先使用环境变量 RSS_SECRET_KEY；否则生成并持久化到 rss/data/.secret_key。
+
+    原实现每次启动随机生成，导致重启后所有已登录会话失效、且多进程/RSS 子进程签名不一致。
+    """
+    env_key = os.getenv("RSS_SECRET_KEY")
+    if env_key:
+        return env_key
+
+    key_file = os.path.join(RSS_DATA_DIR, ".secret_key")
+    try:
+        os.makedirs(RSS_DATA_DIR, exist_ok=True)
+        if os.path.exists(key_file):
+            with open(key_file, "r", encoding="utf-8") as f:
+                saved = f.read().strip()
+            if saved:
+                return saved
+        new_key = secrets.token_hex(32)
+        with open(key_file, "w", encoding="utf-8") as f:
+            f.write(new_key)
+        try:
+            os.chmod(key_file, 0o600)
+        except OSError:
+            pass
+        return new_key
+    except OSError:
+        # 磁盘不可写时退化为进程内随机密钥（重启后需重新登录）
+        return secrets.token_hex(32)
+
+SECRET_KEY = _load_secret_key()
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 1440  # 24小时
 

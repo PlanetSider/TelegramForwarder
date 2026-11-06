@@ -460,6 +460,8 @@ async def add_entry(rule_id: int, entry_data: Dict[str, Any] = Body(...)):
                                 logger.info(f"找到匹配: {match.groups()}")
                                 if match.groups():
                                     entry.title = match.group(1)
+                                    # 与内容模式保持一致：本次提取结果作为下一个模式的输入
+                                    processing_content = entry.title
                                     logger.info(f"使用标题模式 '{pattern.pattern}' 提取到标题: {entry.title}")
                                 else:
                                     logger.warning(f"模式 '{pattern.pattern}' 匹配成功但没有捕获组")

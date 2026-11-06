@@ -5,6 +5,14 @@ from dotenv import load_dotenv
 # 加载环境变量
 load_dotenv()
 
+
+def env_bool(name: str, default: bool = False) -> bool:
+    """把环境变量解析为布尔值（大小写不敏感，支持 1/true/yes/on）。"""
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    return str(raw).strip().lower() in ('1', 'true', 'yes', 'on')
+
 # 目录配置
 BASE_DIR = Path(__file__).parent.parent
 TEMP_DIR = os.path.join(BASE_DIR, 'temp')
@@ -18,7 +26,7 @@ RSS_BASE_URL = os.environ.get('RSS_BASE_URL', None)
 # RSS媒体文件的基础URL，用于生成媒体链接，如果未设置，则使用请求的URL
 RSS_MEDIA_BASE_URL = os.getenv('RSS_MEDIA_BASE_URL', '')
 
-RSS_ENABLED = os.getenv('RSS_ENABLED', 'false')
+RSS_ENABLED = env_bool('RSS_ENABLED')
 
 RULES_PER_PAGE = int(os.getenv('RULES_PER_PAGE', 20))
 
@@ -71,10 +79,10 @@ LOG_BACKUP_COUNT = 3
 BOT_MESSAGE_DELETE_TIMEOUT = int(os.getenv("BOT_MESSAGE_DELETE_TIMEOUT", 300))
 
 # 自动删除用户发送的指令消息
-USER_MESSAGE_DELETE_ENABLE = os.getenv("USER_MESSAGE_DELETE_ENABLE", "false")
+USER_MESSAGE_DELETE_ENABLE = env_bool("USER_MESSAGE_DELETE_ENABLE")
 
 # 是否启用UFB
-UFB_ENABLED = os.getenv("UFB_ENABLED", "false")
+UFB_ENABLED = env_bool("UFB_ENABLED")
 
 # 菜单标题
 AI_SETTINGS_TEXT = """

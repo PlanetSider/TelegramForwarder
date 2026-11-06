@@ -108,7 +108,7 @@ async def async_delete_user_message(client, chat_id, message_id, seconds):
         message_id: 消息ID
         seconds: 等待多少秒后删除, 0表示立即删除, -1表示不删除
     """
-    if USER_MESSAGE_DELETE_ENABLE == "false":
+    if not USER_MESSAGE_DELETE_ENABLE:
         return
     
     if seconds == -1:  # -1 表示不删除

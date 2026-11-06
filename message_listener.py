@@ -74,18 +74,18 @@ async def handle_user_message(event, user_client, bot_client):
     
     chat = await event.get_chat()
     chat_id = abs(chat.id)
+    sender_id = event.sender_id
     # logger.info(f"handle_user_message:获取到聊天ID: {chat_id}")
 
-    # 检查是否频道消息
-    if isinstance(event.chat, types.Channel) and state_manager.check_state():
-        # logger.info("handle_user_message:检测到频道消息且存在状态")
-        sender_id = os.getenv('USER_ID')
-        # 频道ID需要加上100前缀
-        chat_id = int(f"100{chat_id}")
-        # logger.info(f"handle_user_message:频道消息处理: sender_id={sender_id}, chat_id={chat_id}")
-    else:
-        sender_id = event.sender_id
-        # logger.info(f"handle_user_message:非频道消息处理: sender_id={sender_id}")
+    # 频道消息：仅当该频道确实存在待处理状态时才切换为用户身份与频道形式 chat_id。
+    # 原实现只判断“全局是否有人处于设置状态”，任何用户设置提示词期间都会污染所有频道的转发路径。
+    if isinstance(event.chat, types.Channel):
+        channel_user_id = os.getenv('USER_ID')
+        channel_chat_id = int(f"100{chat_id}")
+        if state_manager.get_state(channel_user_id, channel_chat_id)[0]:
+            sender_id = channel_user_id
+            chat_id = channel_chat_id
+            # logger.info(f"handle_user_message:频道消息处理: sender_id={sender_id}, chat_id={chat_id}")
 
     # 检查用户状态
     current_state, message, state_type = state_manager.get_state(sender_id, chat_id)
@@ -193,8 +193,9 @@ async def handle_bot_message(event, bot_client):
         
         
         # 处理提示词设置
-        if current_state:
-            await handle_prompt_setting(event, bot_client, sender_id, chat_id, current_state, message)
+        if current_state and await handle_prompt_setting(
+            event, bot_client, sender_id, chat_id, current_state, message
+        ):
             return
 
         # 如果没有特殊状态，则处理常规命令

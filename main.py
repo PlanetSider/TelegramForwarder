@@ -15,6 +15,7 @@ from scheduler.chat_updater import ChatUpdater
 from handlers.bot_handler import send_welcome_message
 from rss.main import app as rss_app
 from utils.log_config import setup_logging
+from utils.constants import RSS_ENABLED
 
 # 设置Docker日志的默认配置，如果docker-compose.yml中没有配置日志选项将使用这些值
 os.environ.setdefault('DOCKER_LOG_MAX_SIZE', '10m')
@@ -108,7 +109,7 @@ async def start_clients():
         await chat_updater.start()
 
         # 如果启用了 RSS 服务
-        if os.getenv('RSS_ENABLED', '').lower() == 'true':
+        if RSS_ENABLED:
             try:
                 rss_host = os.getenv('RSS_HOST', '0.0.0.0')
                 rss_port = int(os.getenv('RSS_PORT', '8000'))

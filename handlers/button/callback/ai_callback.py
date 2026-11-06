@@ -10,6 +10,7 @@ from telethon import Button
 import logging
 from utils.common import get_main_module, get_ai_settings_text
 from utils.common import is_admin
+from utils.state_utils import cancel_state_after_timeout
 from scheduler.summary_scheduler import SummaryScheduler
 
 
@@ -58,7 +59,7 @@ async def callback_set_summary_prompt(event, rule_id, session, message, data):
     try:
         state_manager.set_state(user_id, chat_id, state, message, state_type="ai")
         # 启动超时取消任务
-        asyncio.create_task(cancel_state_after_timeout(user_id, chat_id))
+        asyncio.create_task(cancel_state_after_timeout(user_id, chat_id, state))
         logger.info("状态设置成功")
     except Exception as e:
         logger.error(f"设置状态时出错: {str(e)}")
@@ -77,15 +78,6 @@ async def callback_set_summary_prompt(event, rule_id, session, message, data):
     except Exception as e:
         logger.error(f"编辑消息时出错: {str(e)}")
         logger.exception(e)
-
-
-async def cancel_state_after_timeout(user_id: int, chat_id: int, timeout_minutes: int = 5):
-    """在指定时间后自动取消状态"""
-    await asyncio.sleep(timeout_minutes * 60)
-    current_state, _, _ = state_manager.get_state(user_id, chat_id)
-    if current_state:  # 只有当状态还存在时才清除
-        logger.info(f"状态超时自动取消 - user_id: {user_id}, chat_id: {chat_id}")
-        state_manager.clear_state(user_id, chat_id)
 
 
 async def callback_set_ai_prompt(event, rule_id, session, message, data):
@@ -114,7 +106,7 @@ async def callback_set_ai_prompt(event, rule_id, session, message, data):
     try:
         state_manager.set_state(user_id, chat_id, state, message, state_type="ai")
         # 启动超时取消任务
-        asyncio.create_task(cancel_state_after_timeout(user_id, chat_id))
+        asyncio.create_task(cancel_state_after_timeout(user_id, chat_id, state))
         logger.info("状态设置成功")
     except Exception as e:
         logger.error(f"设置状态时出错: {str(e)}")

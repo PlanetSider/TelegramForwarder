@@ -457,11 +457,23 @@ def migrate_db(engine):
             logging.error(f'更新唯一约束时出错: {str(e)}')
 
 
+_engine = None
+
+def get_engine():
+    """获取全局复用的数据库引擎（避免每次 get_session 都新建连接池）"""
+    global _engine
+    if _engine is None:
+        os.makedirs('./db', exist_ok=True)
+        _engine = create_engine(
+            'sqlite:///./db/forward.db',
+            # 复用连接池后连接可能被不同线程取得（如 FastAPI 线程池），需关闭同线程校验
+            connect_args={'check_same_thread': False},
+        )
+    return _engine
+
 def init_db():
     """初始化数据库"""
-    # 创建数据库文件夹
-    os.makedirs('./db', exist_ok=True)
-    engine = create_engine('sqlite:///./db/forward.db')
+    engine = get_engine()
 
     # 首先创建所有表
     Base.metadata.create_all(engine)
@@ -472,9 +484,8 @@ def init_db():
     return engine
 
 def get_session():
-    """创建会话工厂"""
-    engine = create_engine('sqlite:///./db/forward.db')
-    Session = sessionmaker(bind=engine)
+    """创建会话（复用全局引擎）"""
+    Session = sessionmaker(bind=get_engine())
     return Session()
 
 if __name__ == '__main__':

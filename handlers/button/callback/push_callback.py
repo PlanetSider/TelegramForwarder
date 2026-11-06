@@ -18,6 +18,7 @@ from utils.constants import RSS_HOST, RSS_PORT,RULES_PER_PAGE,PUSH_SETTINGS_TEXT
 from utils.common import check_and_clean_chats, is_admin
 from utils.auto_delete import reply_and_delete, send_message_and_delete, respond_and_delete
 from managers.state_manager import state_manager
+from utils.state_utils import cancel_state_after_timeout
 
 logger = logging.getLogger(__name__)
 
@@ -102,7 +103,7 @@ async def callback_add_push_channel(event, rule_id, session, message, data):
         state_manager.set_state(user_id, chat_id, state, message, state_type="push")
         
         # 启动超时取消任务
-        asyncio.create_task(cancel_state_after_timeout(user_id, chat_id))
+        asyncio.create_task(cancel_state_after_timeout(user_id, chat_id, state))
         
         await message.edit(
             f"请发送推送配置\n"
@@ -141,14 +142,6 @@ async def callback_cancel_add_push_channel(event, rule_id, session, message, dat
         logger.error(f"取消添加推送配置时出错: {str(e)}")
         logger.error(traceback.format_exc())
         await event.answer('处理请求时出错，请检查日志')
-
-async def cancel_state_after_timeout(user_id: int, chat_id: int, timeout_minutes: int = 5):
-    """在指定时间后自动取消状态"""
-    await asyncio.sleep(timeout_minutes * 60)
-    current_state, _, _ = state_manager.get_state(user_id, chat_id)
-    if current_state:  # 只有当状态还存在时才清除
-        logger.info(f"状态超时自动取消 - user_id: {user_id}, chat_id: {chat_id}")
-        state_manager.clear_state(user_id, chat_id)
 
 async def callback_toggle_push_config(event, config_id, session, message, data):
     """处理点击推送配置的回调"""

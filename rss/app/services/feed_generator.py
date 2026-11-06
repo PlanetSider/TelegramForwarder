@@ -141,7 +141,10 @@ class FeedService:
         session = get_session()
         try:
             rss_config = session.query(RSSConfig).filter(RSSConfig.rule_id == rule_id).first()
-            logger.info(f"获取RSS配置: {rss_config.__dict__}")
+            if rss_config:
+                logger.debug(f"获取RSS配置: rule_id={rule_id}, enable_rss={rss_config.enable_rss}")
+            else:
+                logger.debug(f"规则 {rule_id} 未配置 RSS，使用默认标题")
             # 获取 Feed 标题和描述
             if rss_config and rss_config.enable_rss:
                 if rss_config.rule_title:

@@ -18,6 +18,7 @@ from utils.constants import RSS_HOST, RSS_PORT,RULES_PER_PAGE
 from utils.common import check_and_clean_chats, is_admin
 from utils.auto_delete import reply_and_delete, send_message_and_delete, respond_and_delete
 from managers.state_manager import state_manager
+from utils.state_utils import cancel_state_after_timeout
 
 logger = logging.getLogger(__name__)
 
@@ -1162,7 +1163,7 @@ async def callback_set_userinfo_template(event, rule_id, session, message, data)
     try:
         state_manager.set_state(user_id, chat_id, state, message, state_type="userinfo")
         # 启动超时取消任务
-        asyncio.create_task(cancel_state_after_timeout(user_id, chat_id))
+        asyncio.create_task(cancel_state_after_timeout(user_id, chat_id, state))
         logger.info("状态设置成功")
     except Exception as e:
         logger.error(f"设置状态时出错: {str(e)}")
@@ -1218,7 +1219,7 @@ async def callback_set_time_template(event, rule_id, session, message, data):
     try:
         state_manager.set_state(user_id, chat_id, state, message, state_type="time")
         # 启动超时取消任务
-        asyncio.create_task(cancel_state_after_timeout(user_id, chat_id))
+        asyncio.create_task(cancel_state_after_timeout(user_id, chat_id, state))
         logger.info("状态设置成功")
     except Exception as e:
         logger.error(f"设置状态时出错: {str(e)}")
@@ -1246,14 +1247,6 @@ async def callback_set_time_template(event, rule_id, session, message, data):
         logger.error(f"编辑消息时出错: {str(e)}")
         logger.exception(e)
     return
-
-async def cancel_state_after_timeout(user_id: int, chat_id: int, timeout_minutes: int = 5):
-    """在指定时间后自动取消状态"""
-    await asyncio.sleep(timeout_minutes * 60)
-    current_state, _, _ = state_manager.get_state(user_id, chat_id)
-    if current_state:  # 只有当状态还存在时才清除
-        logger.info(f"状态超时自动取消 - user_id: {user_id}, chat_id: {chat_id}")
-        state_manager.clear_state(user_id, chat_id)
 
 async def callback_cancel_set_userinfo(event, rule_id, session, message, data):
     """取消设置用户信息模板"""
@@ -1311,7 +1304,7 @@ async def callback_set_original_link_template(event, rule_id, session, message, 
     try:
         state_manager.set_state(user_id, chat_id, state, message, state_type="link")
         # 启动超时取消任务
-        asyncio.create_task(cancel_state_after_timeout(user_id, chat_id))
+        asyncio.create_task(cancel_state_after_timeout(user_id, chat_id, state))
         logger.info("状态设置成功")
     except Exception as e:
         logger.error(f"设置状态时出错: {str(e)}")
@@ -1332,7 +1325,7 @@ async def callback_set_original_link_template(event, rule_id, session, message, 
             f"当前原始链接模板：\n\n`{current_template}`\n\n"
             f"{help_text}\n"
             f"5分钟内未设置将自动取消",
-            buttons=[[Button.inline("取消", f"cancel_set_link:{rule_id}")]]
+            buttons=[[Button.inline("取消", f"cancel_set_original_link:{rule_id}")]]
         )
         logger.info("消息编辑成功")
     except Exception as e:

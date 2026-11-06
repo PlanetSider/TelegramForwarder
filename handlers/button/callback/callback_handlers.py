@@ -615,6 +615,10 @@ async def handle_callback(event):
                         success = await update_rule_setting(event, rule_id, session, message, field_name, config, 'ai')
                         if success:
                             return
+
+                # 所有已知处理器与设置项都未命中，明确反馈，避免用户点击后毫无响应
+                logger.warning(f'未知的回调操作: {action}')
+                await event.answer('暂不支持该操作')
         finally:
             session.close()
 

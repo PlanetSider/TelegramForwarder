@@ -330,9 +330,26 @@ async def save_pattern(
         logger.debug(f"找到RSS配置：{config}")
     
       
-        logger.info("创建新模式")
-        # 创建新模式
+        # pattern_id 存在时更新，否则创建（此处此前忽略该参数，导致编辑变成新增）
         try:
+            target_pattern_id = None
+            if pattern_id:
+                try:
+                    target_pattern_id = int(pattern_id)
+                except (TypeError, ValueError):
+                    target_pattern_id = None
+
+            if target_pattern_id is not None:
+                pattern_obj = await db_ops_instance.update_rss_pattern(
+                    db_session,
+                    target_pattern_id,
+                    pattern=pattern,
+                    pattern_type=pattern_type,
+                    priority=priority
+                )
+                logger.info(f"模式更新成功：{pattern_obj}")
+                return JSONResponse({"success": True, "message": "模式已更新", "pattern_id": pattern_obj.id})
+
             pattern_obj = await db_ops_instance.create_rss_pattern(
                 db_session,
                 config.id,

@@ -121,10 +121,12 @@ class ChatUpdater:
                             skipped_count += 1
                             
                     except ValueError as e:
+                        session.rollback()
                         logger.warning(f"无法获取聊天 {chat_id} 的信息: 无效的ID格式 - {str(e)}")
                         skipped_count += 1
                         continue
                     except Exception as e:
+                        session.rollback()
                         logger.warning(f"无法获取聊天 {chat_id} 的信息: {str(e)}")
                         skipped_count += 1
                         continue

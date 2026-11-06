@@ -128,9 +128,11 @@ class SummaryScheduler:
         session = get_session()
         try:
             rule = session.query(ForwardRule).get(rule_id)
-            if not is_now:
-                if not rule or not rule.is_summary:
-                    return
+            if not rule:
+                logger.warning(f"总结任务跳过：规则 {rule_id} 不存在")
+                return
+            if not is_now and not rule.is_summary:
+                return
 
             try:
                 source_chat_id = int(rule.source_chat.telegram_chat_id)

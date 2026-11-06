@@ -1,6 +1,10 @@
 services:
   telegram-forwarder:
-    image: heavrnl/telegramforwarder:latest
+    # 镜像由 GitHub Actions 自动构建并发布到 GHCR（见 .github/workflows/docker-publish.yml）
+    # 首次使用前请在仓库 Packages 页面将镜像可见性改为 Public，或先执行 docker login ghcr.io
+    image: ghcr.io/planetsider/telegramforwarder:latest
+    # 如需本地构建而非拉取镜像，注释掉上面的 image 行并启用下面这行：
+    # build: .
     container_name: telegram-forwarder
     # 如果需要使用 RSS 功能，请取消以下注释
     # ports:

@@ -77,9 +77,9 @@ def get_feishu_bot_config():
         for item in raw.replace(";", ",").split(",")
         if item.strip()
     }
-    platform = (_env("FEISHU_PLATFORM") or "feishu").strip().lower()
-    if platform not in ("feishu", "lark"):
-        platform = "feishu"
+    platform = (_env("FEISHU_PLATFORM") or "auto").strip().lower()
+    if platform not in ("feishu", "lark", "auto"):
+        platform = "auto"
     return app_id, app_secret, allowed, platform
 
 
@@ -204,18 +204,20 @@ async def run_feishu_bot() -> None:
     app_id, app_secret, _, platform = config
     _STATUS.update(configured=True, app_id=app_id, error=None)
 
+    # 飞书（中国）与 Lark（国际）是两套域名，连错会报 1000040351 Incorrect domain name。
+    # 自动探测时先试飞书，失败再试 Lark。
     try:
-        # 飞书（中国）与 Lark（国际）是两套域名，连错会报 1000040351 Incorrect domain name
-        try:
-            from lark_oapi import FEISHU_DOMAIN, LARK_DOMAIN
-            domain = LARK_DOMAIN if platform == "lark" else FEISHU_DOMAIN
-        except Exception:
-            domain = None
-        channel = FeishuChannel(app_id=app_id, app_secret=app_secret, domain=domain)
-    except Exception as exc:
-        _STATUS.update(connected=False, error=f"初始化失败: {exc}")
-        logger.error(f"飞书应用机器人初始化失败: {exc}")
-        return
+        from lark_oapi import FEISHU_DOMAIN, LARK_DOMAIN
+        if platform == "lark":
+            domains = [LARK_DOMAIN]
+        elif platform == "feishu":
+            domains = [FEISHU_DOMAIN]
+        else:
+            domains = [FEISHU_DOMAIN, LARK_DOMAIN]
+    except Exception:
+        domains = [None]
+
+    channel = None
 
     async def on_message(message) -> None:
         try:
@@ -248,17 +250,33 @@ async def run_feishu_bot() -> None:
         except Exception as exc:
             logger.error(f"处理飞书消息时出错: {exc}")
 
-    channel.on("message", on_message)
-
     logger.info(f"飞书应用机器人正在连接（app_id={app_id}）")
-    try:
-        await channel.connect()
-    except Exception as exc:
-        _STATUS.update(connected=False, error=f"连接中断: {exc}")
-        logger.error(f"飞书应用机器人连接中断: {exc}")
-    else:
-        _STATUS.update(connected=True, error=None)
-        logger.info("飞书应用机器人已连接，等待命令")
+    last_error = None
+    for idx, domain in enumerate(domains):
+        try:
+            channel = FeishuChannel(app_id=app_id, app_secret=app_secret, domain=domain)
+        except Exception as exc:
+            last_error = exc
+            continue
+
+        channel.on("message", on_message)
+        try:
+            await channel.connect()
+        except Exception as exc:
+            last_error = exc
+            if idx + 1 < len(domains):
+                logger.warning(
+                    f"飞书长连接在 {domain or '默认域名'} 失败（{exc}），尝试另一个平台域名"
+                )
+                continue
+            break
+        else:
+            _STATUS.update(connected=True, error=None)
+            logger.info("飞书应用机器人已连接，等待命令")
+            return
+
+    _STATUS.update(connected=False, error=f"连接中断: {last_error}")
+    logger.error(f"飞书应用机器人连接中断: {last_error}")
 
 
 def _bot_main() -> None:

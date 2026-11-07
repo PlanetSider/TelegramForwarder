@@ -392,9 +392,6 @@ class PushFilter(BaseFilter):
             text = "（收到一条媒体消息，应用机器人目前只转发文字）" if has_media else "（空消息）"
 
         chat_id = (rule.feishu_chat_id or "").strip()
-        if not chat_id:
-            context.errors.append("规则未指定飞书群，跳过机器人推送")
-            return
 
         session = _get_session()
         try:
@@ -404,9 +401,15 @@ class PushFilter(BaseFilter):
                 return
 
             label = feishu_app.bot_label(bot)
-            ok, detail = await feishu_app.send_text(bot, chat_id, text)
+            if chat_id:
+                ok, detail = await feishu_app.send_text(bot, chat_id, text)
+            else:
+                # 没选群：直接私聊扫码创建者（机器人没加群时唯一的去处）
+                ok, detail = await feishu_app.send_to_owner(bot, text)
+
             if ok:
-                logger.info(f"已通过「{label}」推送到群 {chat_id}")
+                where = f"群 {chat_id}" if chat_id else "创建者私聊"
+                logger.info(f"已通过「{label}」推送到{where}")
             else:
                 logger.error(f"「{label}」推送失败: {detail}")
                 context.errors.append(f"{label}推送失败: {detail}")

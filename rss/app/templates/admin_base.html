@@ -40,11 +40,8 @@
          class="{{ 'on' if active == 'settings' and settings_group == 'telegram' else '' }}">
         <span class="ico">✈</span>Telegram</a>
       <a href="/admin/feishu/feishu"
-         class="{{ 'on' if active == 'feishu' and (platform | default('feishu')) == 'feishu' else '' }}">
+         class="{{ 'on' if active == 'feishu' else '' }}">
         <span class="ico">✦</span>飞书</a>
-      <a href="/admin/feishu/lark"
-         class="{{ 'on' if active == 'feishu' and (platform | default('feishu')) == 'lark' else '' }}">
-        <span class="ico">✈</span>Lark</a>
 
       <div class="nav-group">全局设置</div>
       <div class="nav-sub">
@@ -52,6 +49,7 @@
         <a href="/admin/settings/{{ gid }}"
            class="{{ 'on' if active == 'settings' and settings_group == gid else '' }}">{{ gtitle }}</a>
         {% endfor %}
+        <a href="/admin/account" class="{{ 'on' if active == 'account' else '' }}">账号与密码</a>
       </div>
 
       <div class="nav-group">RSS</div>

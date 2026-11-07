@@ -197,10 +197,32 @@ class FeishuBot(Base):
     platform = Column(Enum(FeishuPlatform), default=FeishuPlatform.FEISHU)
     is_default = Column(Boolean, default=False)  # 只有默认机器人接收命令
     enable = Column(Boolean, default=True)
+    # 扫码创建者的 open_id：没加任何群时，可以「直接发送」给这个人
+    owner_open_id = Column(String(128), nullable=True)
+    owner_name = Column(String(64), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     def label(self) -> str:
         return (self.name or "").strip() or self.app_id
+
+
+class FeishuWebhook(Base):
+    """飞书群自定义机器人：一条 webhook 地址，可选签名密钥。
+
+    和 FeishuBot 的区别是它只能发、不能收（飞书侧不会回调给 webhook），
+    所以命令白名单只对应用机器人有意义。
+    """
+    __tablename__ = 'feishu_webhooks'
+
+    id = Column(Integer, primary_key=True)
+    name = Column(String(64), nullable=True)
+    webhook_url = Column(String(512), nullable=False)
+    secret = Column(String(128), nullable=True)
+    enable = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    def label(self) -> str:
+        return (self.name or "").strip() or "未命名群机器人"
 
 
 class RSSConfig(Base):
@@ -407,6 +429,12 @@ def migrate_db(engine):
         'is_blacklist': 'ALTER TABLE keywords ADD COLUMN is_blacklist BOOLEAN DEFAULT TRUE',
     }
 
+    # 应用机器人补列：扫码建应用时会记下创建者，用于「直接发送」到单聊
+    feishu_bots_new_columns = {
+        'owner_open_id': 'ALTER TABLE feishu_bots ADD COLUMN owner_open_id VARCHAR(128)',
+        'owner_name': 'ALTER TABLE feishu_bots ADD COLUMN owner_name VARCHAR(64)',
+    }
+
     # 添加缺失的列
     with engine.connect() as connection:
         # 添加forward_rules表的列
@@ -417,6 +445,20 @@ def migrate_db(engine):
                     logging.info(f'已添加列: {column}')
                 except Exception as e:
                     logging.error(f'添加列 {column} 时出错: {str(e)}')
+
+        # 添加 feishu_bots 表的列
+        if 'feishu_bots' in existing_tables:
+            try:
+                feishu_bot_columns = [col['name'] for col in inspect(engine).get_columns('feishu_bots')]
+            except Exception:
+                feishu_bot_columns = []
+            for column, sql in feishu_bots_new_columns.items():
+                if column not in feishu_bot_columns:
+                    try:
+                        connection.execute(text(sql))
+                        logging.info(f'已添加列: {column}')
+                    except Exception as e:
+                        logging.error(f'添加列 {column} 时出错: {str(e)}')
                     
 
         # 添加keywords表的列

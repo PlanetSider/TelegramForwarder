@@ -112,6 +112,7 @@ async function onTargetChange() {
   const value = document.getElementById('fwdTarget').value || '';
   const chatSel = document.getElementById('fwdChat');
   const wrap = document.getElementById('fwdChatWrap');
+  const hint = document.getElementById('fwdChatHint');
 
   if (value.indexOf('bot:') !== 0) {
     hideChatPicker();
@@ -119,6 +120,9 @@ async function onTargetChange() {
   }
 
   const botId = value.slice(4);
+  const bot = FEISHU_BOTS.filter(function (b) { return String(b.id) === String(botId); })[0] || {};
+  const canDirect = !!bot.has_owner;
+
   wrap.classList.remove('hide');
   chatSel.innerHTML = '<option value="">加载中…</option>';
 
@@ -126,16 +130,33 @@ async function onTargetChange() {
     const r = await window.api('GET', '/admin/api/feishu/bots/' + botId + '/chats');
     const chats = (r && r.chats) || [];
     chatSel.innerHTML = '';
-    if (!chats.length) {
-      chatSel.innerHTML = '<option value="">没有找到群，先把这个机器人拉进群</option>';
-      return;
+
+    if (canDirect) {
+      const opt = document.createElement('option');
+      opt.value = '__direct__';
+      opt.textContent = '直接发送（发给应用创建者私聊）';
+      chatSel.appendChild(opt);
     }
+
     chats.forEach(function (c) {
       const opt = document.createElement('option');
       opt.value = c.chat_id;
       opt.textContent = c.name || c.chat_id;
       chatSel.appendChild(opt);
     });
+
+    if (!chatSel.options.length) {
+      const opt = document.createElement('option');
+      opt.value = '';
+      opt.textContent = '这个机器人还没被拉进任何群';
+      chatSel.appendChild(opt);
+    }
+
+    if (hint) {
+      hint.textContent = chats.length
+        ? '机器人需要先被拉进目标群，群才会出现在这里'
+        : (canDirect ? '这个机器人还没加入任何群，只能直接发给创建者' : '这个机器人既没加入群，也没记录创建者');
+    }
   } catch (err) {
     chatSel.innerHTML = '<option value="">拉取群失败：' + (err.message || '未知错误') + '</option>';
   }
@@ -161,11 +182,11 @@ function openForward(id, name) {
 
   if (FEISHU_BOTS.length) {
     const g2 = document.createElement('optgroup');
-    g2.label = '飞书 / Lark 机器人';
+    g2.label = '飞书应用机器人';
     FEISHU_BOTS.forEach(function (b) {
       const opt = document.createElement('option');
       opt.value = 'bot:' + b.id;
-      opt.textContent = (b.name || b.app_id) + ' · ' + (b.platform === 'lark' ? 'Lark' : '飞书');
+      opt.textContent = b.name || b.app_id;
       g2.appendChild(opt);
     });
     sel.appendChild(g2);
@@ -192,8 +213,9 @@ async function doForward() {
 
   const body = { source: String(pendingSource) };
   if (target.indexOf('bot:') === 0) {
-    const chatId = document.getElementById('fwdChat').value;
-    if (!chatId) { toast('请选择目标群聊', 'err'); return; }
+    let chatId = document.getElementById('fwdChat').value;
+    if (!chatId) { toast('请选择群聊，或选「直接发送」', 'err'); return; }
+    if (chatId === '__direct__') chatId = '';
     body.target = String(pendingSource); // 只推送到飞书，不转发到别的 TG 会话
     body.feishu_bot_id = Number(target.slice(4));
     body.feishu_chat_id = chatId;

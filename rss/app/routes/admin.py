@@ -238,7 +238,7 @@ async def admin_dialogs(request: Request, kind: str, user=Depends(get_current_us
 
 @router.get("/feishu", response_class=HTMLResponse)
 async def admin_feishu_root(user=Depends(get_current_user)):
-    """飞书与 Lark 是两个开放平台，各自一个页面。"""
+    """飞书通道入口。"""
     if not user:
         return _login_redirect()
     return RedirectResponse(url="/admin/feishu/feishu", status_code=302)
@@ -246,22 +246,23 @@ async def admin_feishu_root(user=Depends(get_current_user)):
 
 @router.get("/feishu/{platform}", response_class=HTMLResponse)
 async def admin_feishu(request: Request, platform: str, user=Depends(get_current_user)):
-    """飞书 / Lark 应用机器人管理页。"""
+    """飞书通道管理页：应用机器人 + 群机器人。
+
+    早先按平台拆成「飞书 / Lark」两个页面，现在统一只做飞书；
+    旧书签访问 /admin/feishu/lark 会跳回来。
+    """
     if not user:
         return _login_redirect()
+    if platform != "feishu":
+        return RedirectResponse(url="/admin/feishu/feishu", status_code=302)
 
     from rss.app.services import feishu_service
-
-    platform = platform if platform in ("feishu", "lark") else "feishu"
-    label, domain = {
-        "feishu": ("飞书", "open.feishu.cn"),
-        "lark": ("Lark", "open.larksuite.com"),
-    }[platform]
 
     session = get_session()
     try:
         rows = app_config.as_display(session)
-        bots = feishu_service.bot_rows(session, platform)
+        bots = feishu_service.bot_rows(session, "feishu")
+        webhooks = feishu_service.webhook_rows(session)
         pushes = rule_service.list_feishu_channels(session)
     finally:
         session.close()
@@ -276,9 +277,10 @@ async def admin_feishu(request: Request, platform: str, user=Depends(get_current
             "feishu",
             view=view,
             bots=bots,
-            platform=platform,
-            platform_label=label,
-            platform_domain=domain,
+            webhooks=webhooks,
+            platform="feishu",
+            platform_label="飞书",
+            platform_domain="open.feishu.cn",
             pushes=pushes,
         ),
     )
@@ -941,3 +943,149 @@ async def admin_api_feishu_register_poll(session_id: str,
         session.close()
 
     return {**result, "saved": ok, "message": message}
+
+
+# ------------------------------------------------------ 群机器人（webhook）
+
+@router.post("/api/feishu/webhooks")
+async def admin_api_add_feishu_webhook(request: Request, user=Depends(get_current_user)):
+    """添加一个群自定义机器人（只能发，不能收）。"""
+    if not user:
+        return _fail("请先登录", 401)
+
+    from rss.app.services import feishu_service
+
+    body = await _json_body(request)
+    session = get_session()
+    try:
+        ok, message = feishu_service.add_webhook(
+            session,
+            url=body.get("url"),
+            name=body.get("name"),
+            secret=body.get("secret"),
+            enable=bool(body.get("enable", True)),
+        )
+    finally:
+        session.close()
+    if not ok:
+        return _fail(message)
+    return {"ok": True, "message": message}
+
+
+@router.post("/api/feishu/webhooks/{hook_id}")
+async def admin_api_update_feishu_webhook(hook_id: int, request: Request,
+                                          user=Depends(get_current_user)):
+    if not user:
+        return _fail("请先登录", 401)
+
+    from rss.app.services import feishu_service
+
+    body = await _json_body(request)
+    kwargs = {}
+    for key in ("name", "secret", "enable", "url"):
+        if key in body:
+            kwargs[key] = body.get(key)
+
+    session = get_session()
+    try:
+        ok, message = feishu_service.update_webhook(session, hook_id, **kwargs)
+    finally:
+        session.close()
+    if not ok:
+        return _fail(message)
+    return {"ok": True, "message": message}
+
+
+@router.delete("/api/feishu/webhooks/{hook_id}")
+async def admin_api_delete_feishu_webhook(hook_id: int, user=Depends(get_current_user)):
+    if not user:
+        return _fail("请先登录", 401)
+
+    from rss.app.services import feishu_service
+
+    session = get_session()
+    try:
+        ok, message = feishu_service.delete_webhook(session, hook_id)
+    finally:
+        session.close()
+    if not ok:
+        return _fail(message)
+    return {"ok": True, "message": message}
+
+
+# ------------------------------------------------------------ 账号设置
+
+@router.post("/api/account")
+async def admin_api_account(request: Request, user=Depends(get_current_user)):
+    """改登录用户名 / 密码。改任何一项都要求验证当前密码。"""
+    if not user:
+        return _fail("请先登录", 401)
+
+    from models.models import User
+    from utils.password_policy import validate_password
+    from werkzeug.security import check_password_hash, generate_password_hash
+
+    body = await _json_body(request)
+    current_password = body.get("current_password") or ""
+    new_username = (body.get("username") or "").strip()
+    new_password = body.get("new_password") or ""
+    confirm_password = body.get("confirm_password") or ""
+
+    relogin = False
+    session = get_session()
+    try:
+        account = session.query(User).filter(User.id == user.id).first()
+        if account is None:
+            return _fail("账号不存在", 404)
+        if not check_password_hash(account.password, current_password):
+            return _fail("当前密码不正确")
+
+        changed = []
+
+        if new_username and new_username != account.username:
+            if len(new_username) < 3:
+                return _fail("用户名至少 3 个字符")
+            taken = session.query(User).filter(User.username == new_username).first()
+            if taken is not None:
+                return _fail("这个用户名已经被占用了")
+            account.username = new_username
+            changed.append("用户名")
+            relogin = True
+
+        if new_password:
+            if new_password != confirm_password:
+                return _fail("两次输入的新密码不一致")
+            rule_ok, rule_error = validate_password(new_password)
+            if not rule_ok:
+                return _fail(rule_error)
+            account.password = generate_password_hash(new_password)
+            changed.append("密码")
+
+        if not changed:
+            return _fail("没有需要修改的内容")
+
+        session.commit()
+    except Exception as exc:
+        session.rollback()
+        logger.exception("更新账号失败")
+        return _fail(f"保存失败：{exc}", 500)
+    finally:
+        session.close()
+
+    return {"ok": True, "message": "已更新" + "和".join(changed), "relogin": relogin}
+
+
+@router.get("/account", response_class=HTMLResponse)
+async def admin_account(request: Request, user=Depends(get_current_user)):
+    """WebUI 登录账号与密码设置。"""
+    if not user:
+        return _login_redirect()
+
+    from utils.password_policy import describe as describe_password_rule
+
+    return templates.TemplateResponse(
+        "admin_account.html",
+        _ctx(request, user, "account",
+             account=user,
+             password_rule=describe_password_rule()),
+    )

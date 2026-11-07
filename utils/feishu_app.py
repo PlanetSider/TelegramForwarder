@@ -144,9 +144,13 @@ async def list_chats(bot: Any, timeout: float = 20.0) -> List[Dict[str, Any]]:
 
 
 async def send_text(
-    bot: Any, chat_id: str, text: str, timeout: float = 20.0
+    bot: Any, chat_id: str, text: str, timeout: float = 20.0,
+    receive_id_type: str = "chat_id",
 ) -> Tuple[bool, str]:
-    """用应用机器人往群里发一条纯文本。返回 (是否成功, 说明)。"""
+    """用应用机器人发一条纯文本。返回 (是否成功, 说明)。
+
+    receive_id_type 决定 chat_id 的含义：chat_id 是群，open_id 是个人。
+    """
     body_text = _truncate(text)
     if not body_text:
         return False, "内容为空"
@@ -167,7 +171,7 @@ async def send_text(
         async with _new_client(timeout) as client:
             resp = await client.post(
                 url,
-                params={"receive_id_type": "chat_id"},
+                params={"receive_id_type": receive_id_type},
                 json=payload,
                 headers={"Authorization": f"Bearer {token}"},
             )
@@ -178,3 +182,11 @@ async def send_text(
     if data.get("code") == 0:
         return True, "ok"
     return False, f"{data.get('code')} {data.get('msg') or '发送失败'}"
+
+
+async def send_to_owner(bot: Any, text: str, timeout: float = 20.0) -> Tuple[bool, str]:
+    """发给扫码创建者本人（私聊）。机器人还没被拉进任何群时走这条。"""
+    open_id = (getattr(bot, "owner_open_id", "") or "").strip()
+    if not open_id:
+        return False, "这个机器人没有记录创建者，无法直接发送；请把它拉进群后选择群"
+    return await send_text(bot, open_id, text, timeout=timeout, receive_id_type="open_id")

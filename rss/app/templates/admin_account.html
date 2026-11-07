@@ -1,0 +1,90 @@
+{% extends "admin_base.html" %}
+{% block crumb %}账号与密码{% endblock %}
+
+{% block content %}
+<div class="page-head">
+  <h2>账号与密码</h2>
+  <span class="sub">控制台的登录入口，改完即时生效</span>
+</div>
+
+<div class="card" style="max-width:640px">
+  <div class="card-h">
+    <h3>登录凭据</h3>
+    <span class="sub">改任何一项都要先填当前密码</span>
+  </div>
+  <div class="card-b">
+    <div class="field">
+      <label>用户名</label>
+      <input class="input" id="accUsername" value="{{ account.username }}" autocomplete="username">
+    </div>
+
+    <div class="field" style="margin-top:14px">
+      <label>当前密码</label>
+      <input class="input" id="accCurrent" type="password" autocomplete="current-password"
+             placeholder="用于验证身份">
+    </div>
+
+    <div class="divider"></div>
+
+    <div class="field">
+      <label>新密码<span class="sub" style="margin-left:6px">留空表示不修改</span></label>
+      <input class="input" id="accNew" type="password" autocomplete="new-password">
+    </div>
+    <div class="field" style="margin-top:12px">
+      <label>确认新密码</label>
+      <input class="input" id="accConfirm" type="password" autocomplete="new-password">
+    </div>
+
+    <div class="note blue" style="margin-top:14px">{{ password_rule }}</div>
+
+    <div class="row" style="display:flex;justify-content:flex-end;margin-top:16px">
+      <button class="btn primary" onclick="saveAccount()">保存</button>
+    </div>
+  </div>
+</div>
+
+<div class="card" style="max-width:640px;margin-top:16px">
+  <div class="card-b">
+    <div class="note">
+      改用户名后当前会话会失效，需要重新登录；只改密码则不受影响。
+      这个账号只用于打开控制台，和 Telegram / 飞书 的账号没有关系。
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function saveAccount() {
+  const username = (document.getElementById('accUsername').value || '').trim();
+  const current = document.getElementById('accCurrent').value || '';
+  const pwd = document.getElementById('accNew').value || '';
+  const confirm = document.getElementById('accConfirm').value || '';
+
+  if (!current) {
+    window.toast('请先填写当前密码', 'error');
+    document.getElementById('accCurrent').focus();
+    return;
+  }
+
+  try {
+    const r = await window.api('POST', '/admin/api/account', {
+      username: username,
+      current_password: current,
+      new_password: pwd,
+      confirm_password: confirm,
+    });
+    window.toast(r.message || '已保存', 'ok');
+    if (r.relogin) {
+      setTimeout(() => { location.href = '/logout'; }, 1200);
+    } else {
+      document.getElementById('accCurrent').value = '';
+      document.getElementById('accNew').value = '';
+      document.getElementById('accConfirm').value = '';
+    }
+  } catch (e) {
+    window.toast(e.message || '保存失败', 'error');
+  }
+}
+</script>
+{% endblock %}

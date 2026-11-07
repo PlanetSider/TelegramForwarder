@@ -1,29 +1,28 @@
 {% extends "admin_base.html" %}
-{% block title %}{{ platform_label }}{% endblock %}
-{% block crumb %}通道设置 / <b>{{ platform_label }}</b>{% endblock %}
+{% block title %}飞书{% endblock %}
+{% block crumb %}通道设置 / <b>飞书</b>{% endblock %}
 
 {% block content %}
 <div class="page-head">
   <div>
-    <h1>{{ platform_label }} 应用机器人</h1>
-    <p>应用机器人既能主动发消息，也能接收命令；群机器人（webhook）只能发消息</p>
+    <h1>飞书通道</h1>
+    <p>应用机器人能主动发消息、也能接收命令；群机器人只能用 webhook 单向发消息</p>
   </div>
   <div class="actions">
-    <button class="btn primary" onclick="addBot()">添加机器人</button>
+    <button class="btn primary" onclick="addBot()">添加应用机器人</button>
   </div>
 </div>
 
 <div class="note blue" style="margin-bottom:14px">
-  这里保存的是 <b>{{ platform_label }} 开放平台</b>创建的企业自建应用，
-  域名是 <code class="mono">{{ platform_domain }}</code>。
-  把飞书的应用填到 Lark 页（或反过来）会报 <code>Incorrect domain name</code>。
-  多个机器人里<b>只有设为默认的那一个</b>会建立长连接接收命令，其余仅用于发消息。
+  这里保存的是在 <b>飞书开放平台</b>（<code class="mono">{{ platform_domain }}</code>）创建的企业自建应用。
+  多个应用机器人里<b>只有设为默认的那一个</b>会建立长连接接收命令，其余仅用于发消息。
+  群机器人不走应用凭证，一条 webhook 地址即可，但只能发、不能收。
 </div>
 
 <div class="card" style="margin-bottom:16px">
   <div class="card-h">
-    <h3>已保存的机器人</h3>
-    <span class="sub">共 {{ bots|length }} 个</span>
+    <h3>应用机器人</h3>
+    <span class="sub">共 {{ bots|length }} 个 · 用 App ID / App Secret 发消息</span>
   </div>
   <div class="card-b">
     {% if bots %}
@@ -120,9 +119,63 @@
   </div>
 </div>
 
+<div class="card" style="margin-bottom:16px">
+  <div class="card-h">
+    <h3>群机器人</h3>
+    <span class="sub">共 {{ webhooks|length }} 个 · 只需一条 webhook，只能发不能收</span>
+  </div>
+  <div class="card-b">
+    {% if webhooks %}
+    <div class="row" style="display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid #e0e0e0;font-size:12px;color:#8c8c8c">
+      <div style="flex:1">名称 / 地址</div>
+      <div style="width:90px">签名</div>
+      <div style="width:80px">状态</div>
+      <div style="width:130px;text-align:right">操作</div>
+    </div>
+    {% for h in webhooks %}
+    <div class="row" style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid #f0f0f0">
+      <div style="flex:1;min-width:0">
+        <div style="font-weight:600">
+          {{ h.label }}
+          {% if not h.enable %}<span class="tag off">已停用</span>{% endif %}
+        </div>
+        <div class="mono" style="font-size:12px;color:#8c8c8c">{{ h.display }}</div>
+      </div>
+      <div style="width:90px">
+        {% if h.has_secret %}<span class="tag ok">已开启</span>{% else %}<span class="tag">未开启</span>{% endif %}
+      </div>
+      <div style="width:80px">
+        {% if h.enable %}<span class="tag ok">启用</span>{% else %}<span class="tag off">停用</span>{% endif %}
+      </div>
+      <div style="width:130px;text-align:right;white-space:nowrap">
+        <button class="btn sm" onclick="toggleHook({{ h.id }}, {{ 'false' if h.enable else 'true' }})">
+          {{ '停用' if h.enable else '启用' }}
+        </button>
+        <button class="btn sm danger" onclick="removeHook({{ h.id }}, {{ h.label|tojson }})">删除</button>
+      </div>
+    </div>
+    {% endfor %}
+    {% else %}
+    <div class="empty">还没有保存群机器人。在飞书群里添加一个「自定义机器人」，把 webhook 地址填进来。</div>
+    {% endif %}
+
+    <div class="divider"></div>
+    <div class="note" style="margin-bottom:10px">
+      飞书群 → 设置 → 群机器人 → 添加「自定义机器人」，复制 webhook 地址。
+      安全设置里如果勾了「签名校验」，把密钥一起填进来。
+    </div>
+    <div class="row" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+      <input class="input" id="hookName" placeholder="名称，如 运营播报群" style="width:180px">
+      <input class="input" id="hookUrl" placeholder="https://open.feishu.cn/open-apis/bot/v2/hook/..." style="flex:1;min-width:280px">
+      <input class="input" id="hookSecret" placeholder="签名密钥（可选）" style="width:170px">
+      <button class="btn primary" onclick="addHook()">添加</button>
+    </div>
+  </div>
+</div>
+
 <div class="card">
   <div class="card-h">
-    <h3>群机器人推送</h3>
+    <h3>规则里的群机器人推送</h3>
     <span class="sub">在规则详情里配置</span>
   </div>
   <div class="card-b">
@@ -179,6 +232,41 @@
 <script>
 const PLATFORM = {{ platform|tojson }};
 const PLATFORM_LABEL = {{ platform_label|tojson }};
+
+async function addHook() {
+  const name = (document.getElementById('hookName').value || '').trim();
+  const url = (document.getElementById('hookUrl').value || '').trim();
+  const secret = (document.getElementById('hookSecret').value || '').trim();
+
+  if (!url) { window.toast('请填写 webhook 地址', 'error'); return; }
+
+  try {
+    await window.api('POST', '/admin/api/feishu/webhooks', { name, url, secret });
+    window.toast('已添加群机器人', 'ok');
+    setTimeout(() => location.reload(), 600);
+  } catch (e) {
+    window.toast(e.message || '添加失败', 'error');
+  }
+}
+
+async function toggleHook(id, enable) {
+  try {
+    await window.api('POST', '/admin/api/feishu/webhooks/' + id, { enable });
+    location.reload();
+  } catch (e) {
+    window.toast(e.message || '操作失败', 'error');
+  }
+}
+
+async function removeHook(id, label) {
+  if (!confirm('删除群机器人「' + label + '」？')) return;
+  try {
+    await window.api('DELETE', '/admin/api/feishu/webhooks/' + id, null);
+    location.reload();
+  } catch (e) {
+    window.toast(e.message || '删除失败', 'error');
+  }
+}
 
 let qrTimer = null;
 let qrSession = null;

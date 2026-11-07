@@ -90,6 +90,14 @@ async def _handle_status(request: web.Request) -> web.Response:
             payload["telegram"]["bot_id"] = getattr(me, "id", None)
         except Exception as exc:
             payload["telegram"]["bot_error"] = str(exc)
+
+    # 飞书应用机器人：状态由 feishu_bot 模块维护，主进程内直接读取
+    try:
+        from utils.feishu_bot import get_bot_status
+        payload["feishu"] = get_bot_status()
+    except Exception as exc:  # pragma: no cover - 状态不可读不应影响概览
+        payload["feishu"] = {"connected": False, "configured": False, "error": str(exc)}
+
     return web.json_response(payload)
 
 

@@ -11,6 +11,7 @@
   涉及 Telegram 实体的操作（拉聊天列表、立即转发）走主进程接口（见 P4 说明）。
 """
 import logging
+from typing import Any, Dict, List
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
@@ -42,8 +43,9 @@ def _ctx(request: Request, user, active: str, **extra):
         "user": user,
         "active": active,
         "project_name": "TG Forwarder",
-        # 侧边栏「全局设置」下的二级菜单，所有页面都要有
-        "settings_groups": [(gid, title) for gid, title, _ in app_config.GROUPS],
+        # 侧边栏「全局设置」下的二级菜单：Telegram / 飞书 已提升为「通道设置」一级入口
+        "settings_groups": [(gid, title) for gid, title, _ in app_config.GROUPS
+                            if gid not in ("telegram", "feishu")],
         "settings_group": "",
     }
     data.update(extra)
@@ -63,17 +65,23 @@ async def admin_index(request: Request, user=Depends(get_current_user)):
     try:
         overview = rule_service.get_overview(session)
         health = rule_service.get_rule_health(session, limit=5)
+        channels = rule_service.list_feishu_channels(session)
     finally:
         session.close()
 
-    # Telegram 状态只有主进程知道，经内部桥只读获取；不可达时为 None
+    # 按品牌分组：飞书与 Lark 各自统计，0 或 1 个时只占一行状态位
+    channel_groups: Dict[str, List[Dict[str, Any]]] = {"feishu": [], "lark": []}
+    for item in channels:
+        channel_groups.setdefault(item["brand"], []).append(item)
+
+    # Telegram / 飞书应用机器人的状态只有主进程知道，经内部桥只读获取；不可达时为 None
     from rss.app.services import bridge_client
-    telegram = await bridge_client.get_status()
+    status = await bridge_client.get_status()
 
     return templates.TemplateResponse(
         "admin_dashboard.html",
         _ctx(request, user, "dashboard", overview=overview, health=health,
-             telegram=telegram),
+             telegram=status, channel_groups=channel_groups),
     )
 
 
@@ -349,6 +357,7 @@ async def admin_api_add_push(rule_id: int, request: Request,
     body = await _json_body(request)
     url = (body.get("url") or "").strip()
     mode = body.get("media_send_mode") or "Single"
+    name = (body.get("name") or "").strip() or None
 
     # 先做格式校验，避免把无法使用的地址写进库
     try:
@@ -364,7 +373,7 @@ async def admin_api_add_push(rule_id: int, request: Request,
 
     session = get_session()
     try:
-        item = rule_service.add_push_channel(session, rule_id, url, mode)
+        item = rule_service.add_push_channel(session, rule_id, url, mode, name=name)
         return JSONResponse({"ok": True, "item": item})
     except LookupError as exc:
         return _fail(str(exc), 404)

@@ -80,6 +80,7 @@
       <thead>
         <tr style="text-align:left;color:#6b7684;font-weight:500">
           <th style="padding:8px 10px;border-bottom:1px solid #eef2f7">规则</th>
+          <th style="padding:8px 10px;border-bottom:1px solid #eef2f7">名称</th>
           <th style="padding:8px 10px;border-bottom:1px solid #eef2f7">平台</th>
           <th style="padding:8px 10px;border-bottom:1px solid #eef2f7">Webhook</th>
           <th style="padding:8px 10px;border-bottom:1px solid #eef2f7">媒体</th>
@@ -92,6 +93,7 @@
           <td style="padding:9px 10px;border-bottom:1px solid #f4f7fa">
             <a href="/admin/rules/{{ p.rule_id }}">{{ p.rule_name }}</a>
           </td>
+          <td style="padding:9px 10px;border-bottom:1px solid #f4f7fa">{{ p.name or '—' }}</td>
           <td style="padding:9px 10px;border-bottom:1px solid #f4f7fa">
             <span class="tag {{ 'push' if p.brand == 'feishu' else 'ai' }}">
               {{ '飞书' if p.brand == 'feishu' else 'Lark' }}</span>

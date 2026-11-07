@@ -105,11 +105,59 @@
             {% else %}<span class="tag off">○ 主进程不可达</span>{% endif %}
           </div>
         </div>
+        <div>
+          <div style="font-size:12px;color:#6b7684">飞书应用机器人</div>
+          <div style="margin-top:5px">
+            {% set fs = telegram.feishu if telegram else None %}
+            {% if not fs %}
+              <span class="tag off">○ 主进程不可达</span>
+            {% elif fs.connected %}
+              <span class="tag ok">● 已连接</span>
+              {% if fs.app_id %}<span class="hint">{{ fs.app_id }}</span>{% endif %}
+            {% elif fs.configured %}
+              <span class="tag err">○ {{ fs.error or '未连接' }}</span>
+            {% else %}
+              <span class="tag off">○ 未配置</span>
+            {% endif %}
+          </div>
+        </div>
       </div>
-      <div class="note blue" style="margin-top:14px">
+
+      <div style="margin-top:16px">
+        {% for brand, label in [('feishu', '飞书群机器人'), ('lark', 'Lark 群机器人')] %}
+        {% set items = channel_groups.get(brand) or [] %}
+        <div style="margin-top:10px">
+          <div style="font-size:12px;color:#6b7684">{{ label }}
+            {% if items|length > 1 %}<span class="hint">共 {{ items|length }} 个</span>{% endif %}
+          </div>
+          {% if items|length == 0 %}
+            <div style="margin-top:5px">
+              <span class="tag off">○ 未配置</span>
+              <span class="hint">可在规则详情的「推送」页添加</span>
+            </div>
+          {% elif items|length == 1 %}
+            {% set c = items[0] %}
+            <div style="margin-top:5px">
+              <span class="tag {{ 'ok' if c.enabled else 'off' }}">● {{ c.name or c.display }}</span>
+              <span class="hint">{{ c.rule_name }}</span>
+            </div>
+          {% else %}
+            <div style="margin-top:6px;display:flex;flex-direction:column;gap:6px">
+              {% for c in items %}
+              <div>
+                <span class="tag {{ 'ok' if c.enabled else 'off' }}">● {{ c.name or c.display }}</span>
+                <span class="hint">{{ c.rule_name }} · {{ c.display }}</span>
+              </div>
+              {% endfor %}
+            </div>
+          {% endif %}
+        </div>
+        {% endfor %}
+      </div>
+            <div class="note blue" style="margin-top:14px">
         {% if telegram %}
-          Telegram 状态经主进程内部桥（127.0.0.1:9805）只读获取。
-          飞书应用机器人是否连接需查看容器日志中的 <code class="mono">飞书</code> 相关输出。
+          Telegram 与飞书应用机器人的状态经主进程内部桥（127.0.0.1:9805）只读获取；
+          群机器人的数量与名称来自各规则的推送配置，实时同步。
         {% else %}
           主进程内部桥不可达：可能未启用 RSS 子进程、桥启动失败，
           或本进程不是由主进程 fork 出来的。此时控制台只能管理数据库配置。

@@ -172,6 +172,8 @@ class PushConfig(Base):
 
     id = Column(Integer, primary_key=True)
     rule_id = Column(Integer, ForeignKey('forward_rules.id'), nullable=False)
+    # 自定义名称：一条规则可以挂多个群机器人，靠它区分
+    name = Column(String(64), nullable=True)
     enable_push_channel = Column(Boolean, default=False)
     push_channel = Column(String, nullable=False)
     #媒体发送方式，一次一张Single还是多张Multiple
@@ -272,8 +274,18 @@ def migrate_db(engine):
             if 'push_configs' not in existing_tables:
                 logging.info("创建push_configs表...")
                 PushConfig.__table__.create(engine)
-   
-                
+
+            # push_configs 补充 name 列（一条规则可挂多个群机器人，需要区分）
+            try:
+                _push_cols = [col['name'] for col in inspect(engine).get_columns('push_configs')]
+            except Exception:
+                _push_cols = []
+            if _push_cols and 'name' not in _push_cols:
+                logging.info("push_configs 补充 name 列...")
+                with engine.connect() as conn:
+                    conn.execute(text("ALTER TABLE push_configs ADD COLUMN name VARCHAR(64)"))
+                    conn.commit()
+
             # 如果media_types表不存在，创建表
             if 'media_types' not in existing_tables:
                 logging.info("创建media_types表...")

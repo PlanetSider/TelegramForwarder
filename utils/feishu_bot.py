@@ -24,11 +24,24 @@ import asyncio
 import logging
 import os
 import re
-from typing import Optional
+from typing import Any, Dict, Optional
 
 from models.models import ForwardRule, get_session
 
 logger = logging.getLogger(__name__)
+
+# 应用机器人运行状态：主进程写入，控制台经内部桥只读
+_STATUS: Dict[str, Any] = {
+    "connected": False,
+    "configured": False,
+    "app_id": None,
+    "error": None,
+}
+
+
+def get_bot_status() -> Dict[str, Any]:
+    """返回应用机器人当前状态，供控制台概览展示。"""
+    return dict(_STATUS)
 
 # 飞书群聊里 @机器人 会在文本中留下 @_user_1 之类的占位符
 _MENTION_RE = re.compile(r"@_user_\d+")
@@ -174,19 +187,23 @@ async def run_feishu_bot() -> None:
     """启动飞书应用机器人长连接；未配置或缺少依赖时安静退出。"""
     config = get_feishu_bot_config()
     if not config:
+        _STATUS.update(connected=False, configured=False, app_id=None, error=None)
         return
 
     try:
         from lark_oapi.channel import FeishuChannel
     except ImportError:
+        _STATUS.update(connected=False, configured=True, error="未安装 lark-oapi")
         logger.error("未安装 lark-oapi，飞书命令功能不可用（pip install lark-oapi）")
         return
 
     app_id, app_secret, _ = config
+    _STATUS.update(configured=True, app_id=app_id, error=None)
 
     try:
         channel = FeishuChannel(app_id=app_id, app_secret=app_secret)
     except Exception as exc:
+        _STATUS.update(connected=False, error=f"初始化失败: {exc}")
         logger.error(f"飞书应用机器人初始化失败: {exc}")
         return
 
@@ -224,7 +241,9 @@ async def run_feishu_bot() -> None:
     channel.on("message", on_message)
 
     logger.info(f"飞书应用机器人已启动（app_id={app_id}）")
+    _STATUS["connected"] = True
     try:
         await channel.connect()
     except Exception as exc:
+        _STATUS.update(connected=False, error=f"连接中断: {exc}")
         logger.error(f"飞书应用机器人连接中断: {exc}")

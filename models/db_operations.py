@@ -1079,7 +1079,7 @@ class DBOperations:
             logger.error(f"获取推送配置时出错: {str(e)}")
             return []
     
-    async def add_push_config(self, session, rule_id, push_channel, enable_push_channel=True):
+    async def add_push_config(self, session, rule_id, push_channel, enable_push_channel=True, name=None):
         """添加推送配置
         
         Args:
@@ -1100,6 +1100,7 @@ class DBOperations:
             # 创建新的推送配置
             push_config = PushConfig(
                 rule_id=rule_id,
+                name=name,
                 push_channel=push_channel,
                 enable_push_channel=enable_push_channel
             )

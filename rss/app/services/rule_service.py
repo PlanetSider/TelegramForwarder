@@ -154,6 +154,7 @@ def rule_detail(rule: ForwardRule) -> Dict[str, Any]:
         "enable_only_push": bool(rule.enable_only_push),
         "push_channels": [
             {"id": p.id, "url": p.push_channel,
+             "name": (p.name or "").strip(),
              "enabled": bool(p.enable_push_channel),
              "media_send_mode": p.media_send_mode or "Single",
              **_push_label(p.push_channel)}
@@ -451,7 +452,8 @@ def toggle_rule(session, rule_id: int, enabled: bool) -> bool:
 # ---------------------------------------------------------------- 推送地址
 
 def add_push_channel(session, rule_id: int, url: str,
-                     media_send_mode: str = "Single") -> Dict[str, Any]:
+                     media_send_mode: str = "Single",
+                     name: str = None) -> Dict[str, Any]:
     rule = session.query(ForwardRule).get(rule_id)
     if not rule:
         raise LookupError("规则不存在")
@@ -465,12 +467,13 @@ def add_push_channel(session, rule_id: int, url: str,
     if existed:
         raise ValueError("该地址已存在")
 
-    config = PushConfig(rule_id=rule_id, push_channel=url,
+    clean_name = (name or "").strip() or None
+    config = PushConfig(rule_id=rule_id, name=clean_name, push_channel=url,
                         enable_push_channel=True,
                         media_send_mode=media_send_mode or "Single")
     session.add(config)
     session.commit()
-    return {"id": config.id, "url": config.push_channel}
+    return {"id": config.id, "url": config.push_channel, "name": config.name}
 
 
 def toggle_push_channel(session, push_id: int, enabled: bool) -> bool:
@@ -569,6 +572,7 @@ def list_feishu_channels(session) -> List[Dict[str, Any]]:
             "push_id": row.id,
             "rule_id": row.rule_id,
             "rule_name": rule_name,
+            "name": (row.name or "").strip(),
             "brand": target.brand,
             "display": target.masked_url,
             "enabled": bool(row.enable_push_channel),

@@ -89,7 +89,11 @@
           <div style="font-size:12px;color:#6b7684">Telegram 用户账号</div>
           <div style="margin-top:5px">
             {% if telegram and telegram.telegram.user_connected %}<span class="tag ok">● 在线</span>
-            {% elif telegram %}<span class="tag no">○ 离线</span>
+            {% elif telegram %}
+              {% if not telegram.telegram.configured %}<span class="tag warn">○ 未配置</span>
+              {% elif not telegram.telegram.authorized %}<span class="tag warn">○ 待登录</span>
+              {% else %}<span class="tag no">○ 离线</span>{% endif %}
+              {% if telegram.telegram.error %}<div class="hint" style="margin-top:6px">{{ telegram.telegram.error }}</div>{% endif %}
             {% else %}<span class="tag off">○ 主进程不可达</span>{% endif %}
           </div>
         </div>
@@ -103,6 +107,9 @@
               {% endif %}
             {% elif telegram %}<span class="tag no">○ 离线</span>
             {% else %}<span class="tag off">○ 主进程不可达</span>{% endif %}
+            {% if telegram and not telegram.telegram.bot_connected and telegram.telegram.error %}
+            <div class="hint" style="margin-top:6px">同上：{{ telegram.telegram.error }}</div>
+            {% endif %}
           </div>
         </div>
         <div>

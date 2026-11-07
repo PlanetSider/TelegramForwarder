@@ -33,7 +33,7 @@ from handlers.bot_handler import send_welcome_message
 from rss.main import app as rss_app
 from utils.log_config import setup_logging
 from utils.constants import WEB_HOST, WEB_PORT
-from utils.feishu_bot import run_feishu_bot
+from utils.feishu_bot import start_feishu_bot
 from utils.main_bridge import ensure_token, start_bridge
 from utils import app_config
 from utils.telegram_login import STATUS_AUTHORIZED, login_manager
@@ -53,6 +53,15 @@ db_ops = None
 scheduler = None
 chat_updater = None
 rss_process = None
+
+# 控制台通过内部桥读取这份状态，避免只显示笼统的“离线”
+TELEGRAM_STATUS = {
+    "configured": False,
+    "missing": [],
+    "authorized": False,
+    "started": False,
+    "error": None,
+}
 
 # 客户端在拿到凭据之后才构造，模块级先占位：
 # utils/common.get_user_client() 依赖 main 模块上的这两个名字存在。
@@ -144,8 +153,11 @@ async def user_session_authorized() -> bool:
 
 
 async def start_telegram() -> bool:
-    """启动 Telegram 相关的一切；凭据或会话不满足时安静返回 False。"""
-    global db_ops, scheduler, chat_updater
+    """启动 Telegram 相关的一切；条件不满足时安静返回 False，由外层重试。"""
+    global db_ops, scheduler, chat_updater, user_client, bot_client
+
+    if TELEGRAM_STATUS.get("started"):
+        return True
 
     db_ops = db_ops or await DBOperations.create()
 
@@ -156,11 +168,17 @@ async def start_telegram() -> bool:
         session.close()
 
     missing = [name for name, value in creds.items() if not value]
+    TELEGRAM_STATUS["configured"] = not missing
+    TELEGRAM_STATUS["missing"] = missing
     if missing:
+        TELEGRAM_STATUS["error"] = "缺少配置：" + "、".join(missing)
         logger.info("尚未配置 %s，Telegram 链路待配置", '、'.join(missing))
         return False
 
-    if not await user_session_authorized():
+    authorized = await user_session_authorized()
+    TELEGRAM_STATUS["authorized"] = authorized
+    if not authorized:
+        TELEGRAM_STATUS["error"] = "用户会话未授权，请在控制台完成验证码登录"
         logger.info("Telegram 用户会话未授权，等待在控制台完成登录")
         return False
 
@@ -185,8 +203,11 @@ async def start_telegram() -> bool:
         await chat_updater.start()
 
         await send_welcome_message(bot_client)
+
+        TELEGRAM_STATUS.update(started=True, error=None)
         return True
     except Exception as e:
+        TELEGRAM_STATUS["error"] = f"启动失败：{e}"
         logger.error("启动 Telegram 链路失败: %s", e)
         logger.exception(e)
         return False
@@ -207,25 +228,22 @@ async def start_clients():
     # 控制台无条件启动
     start_webui()
 
-    # 飞书推送不依赖 Telegram，先起；未配置时在内部安静退出
-    asyncio.create_task(run_feishu_bot())
+    # 飞书长连接跑在独立线程里：lark_oapi 在导入时就绑定事件循环，放进主循环会崩
+    start_feishu_bot()
 
     try:
-        started = await start_telegram()
-        if not started:
-            logger.warning("=" * 60)
-            logger.warning("尚未完成配置：请打开控制台 /admin 注册账号，")
-            logger.warning("再按向导填写 API_ID / API_HASH / BOT_TOKEN / 手机号 并完成验证码登录。")
-            logger.warning("配置完成后会自动启动，无需重启容器。")
-            logger.warning("=" * 60)
-            # 等待向导里的登录流程把状态置为已授权
-            while login_manager.status != STATUS_AUTHORIZED:
-                await asyncio.sleep(2)
-            logger.info("检测到登录成功，正在启动 Telegram 链路…")
-            if not await start_telegram():
-                logger.error("配置完成后启动 Telegram 仍然失败，请查看日志")
-                return
+        notified = False
+        while not await start_telegram():
+            if not notified:
+                logger.warning("=" * 60)
+                logger.warning("Telegram 尚未就绪：%s", TELEGRAM_STATUS.get("error"))
+                logger.warning("请打开控制台 /admin 注册账号，按向导填写凭据并完成验证码登录。")
+                logger.warning("补齐后会自动接上，无需重启容器。")
+                logger.warning("=" * 60)
+                notified = True
+            await asyncio.sleep(5)
 
+        logger.info("Telegram 链路已就绪，开始监听消息")
         await asyncio.gather(
             user_client.run_until_disconnected(),
             bot_client.run_until_disconnected()

@@ -21,6 +21,7 @@
 """
 
 import asyncio
+import threading
 import logging
 import os
 import re
@@ -240,10 +241,42 @@ async def run_feishu_bot() -> None:
 
     channel.on("message", on_message)
 
-    logger.info(f"飞书应用机器人已启动（app_id={app_id}）")
-    _STATUS["connected"] = True
+    logger.info(f"飞书应用机器人正在连接（app_id={app_id}）")
     try:
         await channel.connect()
     except Exception as exc:
         _STATUS.update(connected=False, error=f"连接中断: {exc}")
         logger.error(f"飞书应用机器人连接中断: {exc}")
+    else:
+        _STATUS.update(connected=True, error=None)
+        logger.info("飞书应用机器人已连接，等待命令")
+
+
+def _bot_main() -> None:
+    """线程入口。
+
+    ``lark_oapi`` 在模块导入时就执行 ``asyncio.get_event_loop()`` 并把结果缓存
+    成模块级变量，之后 ``start()`` 用 ``loop.run_until_complete`` 启动。若在已有
+    事件循环（主进程的 asyncio loop）里导入，缓存到的就是正在运行的循环，启动时
+    必然抛 "This event loop is already running"。所以必须先在当前线程导入，
+    再交给 asyncio.run。
+    """
+    try:
+        import lark_oapi.channel  # noqa: F401
+    except ImportError:
+        _STATUS.update(connected=False, configured=True, error="未安装 lark-oapi")
+        logger.error("未安装 lark-oapi，飞书命令功能不可用（pip install lark-oapi）")
+        return
+
+    try:
+        asyncio.run(run_feishu_bot())
+    except Exception as exc:
+        _STATUS.update(connected=False, error=f"连接中断: {exc}")
+        logger.error(f"飞书应用机器人线程异常退出: {exc}")
+
+
+def start_feishu_bot() -> threading.Thread:
+    """在独立线程里跑飞书长连接，不占用主事件循环。"""
+    t = threading.Thread(target=_bot_main, name="feishu-bot", daemon=True)
+    t.start()
+    return t

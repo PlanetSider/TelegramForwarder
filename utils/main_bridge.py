@@ -76,11 +76,23 @@ def _clients():
 async def _handle_status(request: web.Request) -> web.Response:
     user_client, bot_client = _clients()
 
+    runtime: Dict[str, Any] = {}
+    try:
+        from utils.common import get_main_module
+        runtime = dict(getattr(get_main_module(), "TELEGRAM_STATUS", {}) or {})
+    except Exception:
+        runtime = {}
+
     payload: Dict[str, Any] = {
         "ok": True,
         "telegram": {
             "user_connected": bool(user_client and user_client.is_connected()),
             "bot_connected": bool(bot_client and bot_client.is_connected()),
+            "configured": bool(runtime.get("configured")),
+            "missing": runtime.get("missing") or [],
+            "authorized": bool(runtime.get("authorized")),
+            "started": bool(runtime.get("started")),
+            "error": runtime.get("error"),
         },
     }
     if bot_client is not None and bot_client.is_connected():

@@ -226,7 +226,7 @@ class SummaryScheduler:
                     logger.info(f"使用规则配置的AI模型进行总结: {rule.ai_model}")
 
                 # 获取AI提供者并处理总结
-                provider = await get_ai_provider(rule.ai_model)
+                provider = await get_ai_provider(rule.ai_model, getattr(rule, "ai_provider_id", None))
                 summary = await provider.process_message(
                     all_messages,
                     prompt=rule.summary_prompt or DEFAULT_SUMMARY_PROMPT,

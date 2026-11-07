@@ -374,7 +374,7 @@ async def add_entry(rule_id: int, entry_data: Dict[str, Any] = Body(...)):
         if rss_config.is_ai_extract:
             try:
                 rule = session.query(ForwardRule).filter(ForwardRule.id == rule_id).first()
-                provider = await get_ai_provider(rule.ai_model)
+                provider = await get_ai_provider(rule.ai_model, getattr(rule, "ai_provider_id", None))
                 json_text = await provider.process_message(
                     message=entry.content or "",
                     prompt=rss_config.ai_extract_prompt,

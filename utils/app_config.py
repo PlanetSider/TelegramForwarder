@@ -47,6 +47,8 @@ GROUPS: List[Tuple[str, str, str]] = [
     ("telegram", "Telegram", "账号凭据与管理员"),
     ("ai", "AI 服务", "各家模型的密钥与接入地址"),
     ("behavior", "默认行为", "新建规则时的默认取值"),
+    ("global_whitelist", "公共白名单", "所有规则可共用的白名单关键字"),
+    ("global_blacklist", "公共黑名单", "所有规则可共用的黑名单关键字"),
     ("switch", "功能开关", "整体能力的启用与停用"),
     ("ui", "界面与分页", "列表每页数量、键盘行数"),
     ("timing", "超时与批量", "延时、超时与并发参数"),
@@ -164,6 +166,11 @@ SETTINGS: List[SettingSpec] = [
     SettingSpec("FEISHU_ALLOWED_USERS", "命令白名单", "feishu", "text",
                 help="允许下发命令的 open_id，多个用逗号或分号分隔；留空表示拒绝所有命令，"
                      "第一次可先留空，从容器日志里取到来访者的 open_id 再填回"),
+    # ---------------------------------------------------------- 公共名单
+    SettingSpec("GLOBAL_WHITELIST", "白名单关键字", "global_whitelist", "textarea",
+                help="每行一个关键字，或每行一个 /正则/；规则里勾选「启用公共白名单」后生效"),
+    SettingSpec("GLOBAL_BLACKLIST", "黑名单关键字", "global_blacklist", "textarea",
+                help="每行一个关键字，或每行一个 /正则/；规则里勾选「启用公共黑名单」后生效"),
 ]
 
 _BY_KEY: Dict[str, SettingSpec] = {s.key: s for s in SETTINGS}

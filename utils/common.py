@@ -381,6 +381,57 @@ def get_admin_list():
 
 
 
+async def _with_global_keywords(rule):
+    """把公共白/黑名单并入本规则的关键字，返回只读副本。
+
+    直接改 ORM 对象的 keywords 关系会被 session 记成脏数据，所以这里
+    构造一个只带判断所需字段的轻量对象。
+    """
+    from types import SimpleNamespace
+    from models.models import get_session
+    from utils import app_config
+
+    use_white = bool(getattr(rule, "use_global_whitelist", False))
+    use_black = bool(getattr(rule, "use_global_blacklist", False))
+    if not (use_white or use_black):
+        return rule
+
+    session = get_session()
+    try:
+        current = app_config.get_current(session)
+    finally:
+        session.close()
+
+    combined = list(rule.keywords or [])
+    for text, is_black in ((current.get("GLOBAL_WHITELIST", ""), False),
+                           (current.get("GLOBAL_BLACKLIST", ""), True)):
+        if is_black and not use_black:
+            continue
+        if not is_black and not use_white:
+            continue
+        for line in (text or "").splitlines():
+            item = line.strip()
+            if not item:
+                continue
+            is_regex = len(item) > 2 and item.startswith("/") and item.endswith("/")
+            combined.append(SimpleNamespace(
+                keyword=item[1:-1] if is_regex else item,
+                is_blacklist=is_black,
+                is_regex=is_regex,
+            ))
+
+    logger.info("公共名单已合并：白名单=%s 黑名单=%s，关键字共 %d 条",
+                use_white, use_black, len(combined))
+    return SimpleNamespace(
+        id=rule.id,
+        forward_mode=rule.forward_mode,
+        enable_reverse_blacklist=rule.enable_reverse_blacklist,
+        enable_reverse_whitelist=rule.enable_reverse_whitelist,
+        is_filter_user_info=rule.is_filter_user_info,
+        keywords=combined,
+    )
+
+
 async def check_keywords(rule, message_text, event = None):
     """
     检查消息是否匹配关键字规则
@@ -393,6 +444,9 @@ async def check_keywords(rule, message_text, event = None):
     Returns:
         bool: 是否应该转发消息
     """
+    # 公共名单：启用后并入本次判断（返回轻量副本，不改动 ORM 对象）
+    rule = await _with_global_keywords(rule)
+
     reverse_blacklist = rule.enable_reverse_blacklist
     reverse_whitelist = rule.enable_reverse_whitelist
     logger.info(f"反转黑名单: {reverse_blacklist}, 反转白名单: {reverse_whitelist}")

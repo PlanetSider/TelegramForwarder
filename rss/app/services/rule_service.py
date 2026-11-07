@@ -4,6 +4,7 @@ Web 控制台与（后续的）Bot 命令共用这一层，避免把业务逻辑
 本模块当前提供**只读**能力，写操作见各 update_* 函数（P1 阶段补齐）。
 """
 import logging
+import re
 from typing import Any, Dict, List, Optional
 
 from models.models import (
@@ -166,6 +167,7 @@ def rule_detail(rule: ForwardRule) -> Dict[str, Any]:
         # AI
         "is_ai": bool(rule.is_ai),
         "ai_model": rule.ai_model or "",
+        "ai_provider_id": getattr(rule, "ai_provider_id", None),
         "ai_prompt": rule.ai_prompt or "",
         "enable_ai_upload_image": bool(rule.enable_ai_upload_image),
         "is_keyword_after_ai": bool(rule.is_keyword_after_ai),
@@ -192,6 +194,8 @@ def rule_detail(rule: ForwardRule) -> Dict[str, Any]:
         "ufb_domain": rule.ufb_domain or "",
         "ufb_item": rule.ufb_item or "main",
         "enable_sync": bool(rule.enable_sync),
+        "use_global_whitelist": bool(getattr(rule, "use_global_whitelist", False)),
+        "use_global_blacklist": bool(getattr(rule, "use_global_blacklist", False)),
         "syncs": [s.sync_rule_id for s in (rule.rule_syncs or [])],
     }
 
@@ -343,6 +347,7 @@ _BOOL_FIELDS = {
     "media_allow_text", "is_ai", "enable_ai_upload_image",
     "is_keyword_after_ai", "is_summary", "is_top_summary",
     "enable_push", "enable_only_push", "only_rss", "is_ufb", "enable_sync",
+    "use_global_whitelist", "use_global_blacklist",
 }
 
 _INT_FIELDS = {"delay_seconds": 0, "max_media_size": 10}
@@ -406,6 +411,47 @@ def update_rule_fields(session, rule_id: int, data: Dict[str, Any]) -> Dict[str,
 
     for key, raw in (data or {}).items():
         try:
+            # 扩展名列表 / 同步目标：以逗号分隔的文本整体替换子表
+            if key == "media_extensions_text":
+                raw_text = "" if raw is None else str(raw)
+                exts = [x.strip().lstrip(".").lower()
+                        for x in re.split(r"[,，\s]+", raw_text) if x.strip()]
+                for row in list(rule.media_extensions or []):
+                    session.delete(row)
+                rule.media_extensions = [
+                    MediaExtensions(rule_id=rule.id, extension=e)
+                    for e in dict.fromkeys(exts)
+                ]
+                for row in rule.media_extensions:
+                    session.add(row)
+                updated.append(key)
+                continue
+            if key == "syncs_text":
+                raw_text = "" if raw is None else str(raw)
+                sync_ids: List[int] = []
+                for token in re.split(r"[,，\s]+", raw_text):
+                    token = token.strip().lstrip("#")
+                    if token.isdigit() and int(token) != rule.id:
+                        sync_ids.append(int(token))
+                for row in list(rule.rule_syncs or []):
+                    session.delete(row)
+                rule.rule_syncs = [
+                    RuleSync(rule_id=rule.id, sync_rule_id=i)
+                    for i in dict.fromkeys(sync_ids)
+                ]
+                for row in rule.rule_syncs:
+                    session.add(row)
+                updated.append(key)
+                continue
+            if key == "ai_provider_id":
+                raw_text = "" if raw is None else str(raw).strip()
+                try:
+                    setattr(rule, key, int(raw_text) if raw_text else None)
+                except ValueError:
+                    skipped.append(key)
+                    continue
+                updated.append(key)
+                continue
             # 媒体类型子表
             if key.startswith("media."):
                 flag = key.split(".", 1)[1]

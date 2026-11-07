@@ -44,6 +44,10 @@
           <option value="{{ value }}" {% if (row.get('display') or '') == value %}selected{% endif %}>{{ text }}</option>
           {% endfor %}
         </select>
+        {% elif item.kind == 'textarea' %}
+        <textarea id="cfg-{{ item.key }}" data-key="{{ item.key }}" data-secret="0" rows="6"
+                  placeholder="每行一个关键字"
+                  style="width:100%;box-sizing:border-box;padding:9px 10px;border:1px solid #d9d9d9;border-radius:8px;font-family:inherit">{{ row.get('display') or '' }}</textarea>
         {% elif item.kind == 'model' %}
         <div style="display:flex;gap:8px">
           <input id="cfg-{{ item.key }}" data-key="{{ item.key }}" data-secret="0" type="text"
@@ -103,6 +107,33 @@
       {% endfor %}
     {% else %}
       <div class="empty">没有可编辑的配置文件</div>
+    {% endif %}
+  </div>
+</div>
+{% endif %}
+
+{% if settings_group == 'behavior' %}
+<div class="card" style="margin-top:14px">
+  <div class="card-h">
+    <h3>默认 AI 供应商</h3>
+    <span class="sub">规则里没有指定供应商时，用这一套</span>
+  </div>
+  <div class="card-b">
+    <div class="field">
+      <label>供应商</label>
+      <div class="val" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <select class="input" id="defaultProvider" style="max-width:280px">
+          <option value="">未设置</option>
+          {% for p in providers %}
+          <option value="{{ p.id }}" {{ 'selected' if p.is_default else '' }}>{{ p.name }}</option>
+          {% endfor %}
+        </select>
+        <button class="btn primary sm" type="button" onclick="saveDefaultProvider()">设为默认</button>
+        <a class="btn ghost sm" href="/admin/ai">管理供应商</a>
+      </div>
+    </div>
+    {% if not providers %}
+    <div class="hint">还没有供应商，先去「通道设置 · AI 服务」添加一个。</div>
     {% endif %}
   </div>
 </div>
@@ -213,5 +244,16 @@ async function saveAllSettings() {
     });
   });
 })();
+
+window.saveDefaultProvider = function () {
+  var sel = document.getElementById('defaultProvider');
+  if (!sel || !sel.value) { window.toast('请先选择一个供应商', 'error'); return; }
+  window.api('POST', '/admin/api/ai/providers/' + sel.value + '/default', {})
+    .then(function () {
+      window.toast('已设为默认供应商', 'ok');
+      setTimeout(function () { location.reload(); }, 400);
+    })
+    .catch(function (e) { window.toast(e.message, 'error'); });
+};
 </script>
 {% endblock %}

@@ -1,0 +1,207 @@
+{% extends "admin_base.html" %}
+{% block title %}AI 服务{% endblock %}
+{% block crumb %}通道设置 / <b>AI 服务</b>{% endblock %}
+
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>AI 服务</h1>
+    <p>一个供应商 = 一套 OpenAI 兼容接口配置，可以保存多套，规则里按需选用</p>
+  </div>
+  <div class="actions">
+    <button class="btn primary" type="button" onclick="openProvider()">添加供应商</button>
+  </div>
+</div>
+
+<div class="note blue" style="margin-bottom:14px">
+  接口地址填到 <code class="mono">/v1</code> 这一级即可，例如
+  <code class="mono">https://api.openai.com/v1</code>、<code class="mono">https://api.deepseek.com/v1</code>、
+  本地 Ollama 用 <code class="mono">http://127.0.0.1:11434/v1</code>。
+  规则的 AI 页不指定供应商时，用这里标记为「默认」的那一套。
+</div>
+
+<div class="card">
+  <div class="card-h">
+    <h3>供应商</h3>
+    <span class="sub">共 {{ providers|length }} 个</span>
+  </div>
+  {% if providers %}
+  <table>
+    <thead>
+      <tr>
+        <th style="width:150px">名称</th>
+        <th>接口地址</th>
+        <th style="width:130px">API Key</th>
+        <th style="width:150px">模型</th>
+        <th style="width:110px">思考模式</th>
+        <th style="width:80px">默认</th>
+        <th style="width:210px"></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for p in providers %}
+      <tr>
+        <td><b>{{ p.name }}</b></td>
+        <td class="mono" style="font-size:12px">{{ p.base_url or '—' }}</td>
+        <td class="mono" style="font-size:12px">{{ p.key_display or '未设置' }}</td>
+        <td class="mono" style="font-size:12px">{{ p.model or '—' }}</td>
+        <td>
+          {% if p.reasoning %}<span class="tag">{{ p.reasoning }}</span>
+          {% else %}<span class="hint">跟随默认</span>{% endif %}
+        </td>
+        <td>
+          {% if p.is_default %}<span class="tag ok">默认</span>{% else %}
+          <button class="btn ghost sm" type="button" onclick='setDefault({{ p.id }})'>设为默认</button>
+          {% endif %}
+        </td>
+        <td>
+          <div style="display:flex;gap:6px">
+            <button class="btn ghost sm" type="button"
+                    onclick='openProvider({{ p.id }}, {{ p.name|tojson }}, {{ p.base_url|tojson }}, {{ p.model|tojson }}, {{ p.reasoning|tojson }})'>编辑</button>
+            <button class="btn danger sm" type="button"
+                    onclick='removeProvider({{ p.id }}, {{ p.name|tojson }})'>删除</button>
+          </div>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="empty">还没有配置供应商。点右上角「添加供应商」开始。</div>
+  {% endif %}
+</div>
+
+<!-- ---------------------------------------------------------- 编辑弹窗 -->
+<div id="providerModal" class="hide"
+     style="position:fixed;inset:0;background:rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center;z-index:60">
+  <div class="card" style="width:520px;max-width:92vw;margin:0">
+    <div class="card-h">
+      <h3 id="providerTitle">添加供应商</h3>
+      <button class="btn ghost sm" type="button" onclick="closeProvider()">关闭</button>
+    </div>
+    <div class="card-b">
+      <div class="field">
+        <label>名称</label>
+        <div class="val"><input class="input" id="pvName" placeholder="如 OpenAI、DeepSeek、本地 Ollama" style="width:100%"></div>
+      </div>
+      <div class="field">
+        <label>接口地址</label>
+        <div class="val"><input class="input" id="pvBase" placeholder="https://api.openai.com/v1" style="width:100%"></div>
+      </div>
+      <div class="field">
+        <label>API Key</label>
+        <div class="val"><input class="input" id="pvKey" type="password" autocomplete="off"
+                                placeholder="留空表示不修改" style="width:100%"></div>
+      </div>
+      <div class="field">
+        <label>模型</label>
+        <div class="val" style="display:flex;gap:8px">
+          <input class="input" id="pvModel" placeholder="点右侧获取，或直接手填" style="flex:1">
+          <button class="btn ghost btn-sm" type="button" onclick="fetchModelsForProvider()">获取模型</button>
+        </div>
+        <select id="pvModelPicker" class="input" style="display:none;margin-top:8px"></select>
+      </div>
+      <div class="field">
+        <label>思考模式</label>
+        <div class="val">
+          <select class="input" id="pvReasoning" style="width:100%">
+            {% for value, text in reasoning_options %}
+            <option value="{{ value }}">{{ text }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+      <div class="field">
+        <label>设为默认</label>
+        <div class="val"><label class="switch"><input type="checkbox" id="pvDefault"><span></span></label></div>
+      </div>
+    </div>
+    <div class="card-b" style="border-top:1px solid #f0f0f0;display:flex;justify-content:flex-end;gap:8px">
+      <button class="btn" type="button" onclick="closeProvider()">取消</button>
+      <button class="btn primary" type="button" id="pvSave" onclick="saveProvider()">保存</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  var editingId = null;
+  var modal = document.getElementById('providerModal');
+
+  window.openProvider = function (id, name, base, model, reasoning) {
+    editingId = id || null;
+    document.getElementById('providerTitle').textContent = id ? '编辑供应商' : '添加供应商';
+    document.getElementById('pvName').value = name || '';
+    document.getElementById('pvBase').value = base || '';
+    document.getElementById('pvKey').value = '';
+    document.getElementById('pvModel').value = model || '';
+    document.getElementById('pvReasoning').value = reasoning || '';
+    document.getElementById('pvDefault').checked = false;
+    document.getElementById('pvModelPicker').style.display = 'none';
+    modal.classList.remove('hide');
+  };
+
+  window.closeProvider = function () {
+    modal.classList.add('hide');
+  };
+
+  window.saveProvider = function () {
+    var name = (document.getElementById('pvName').value || '').trim();
+    if (!name) { window.toast('请填写名称', 'error'); return; }
+    var body = {
+      name: name,
+      base_url: (document.getElementById('pvBase').value || '').trim(),
+      api_key: (document.getElementById('pvKey').value || '').trim(),
+      model: (document.getElementById('pvModel').value || '').trim(),
+      reasoning: (document.getElementById('pvReasoning').value || '').trim(),
+      is_default: document.getElementById('pvDefault').checked
+    };
+    var url = editingId ? '/admin/api/ai/providers/' + editingId : '/admin/api/ai/providers';
+    var btn = document.getElementById('pvSave');
+    btn.disabled = true;
+    window.api('POST', url, body)
+      .then(function () { window.toast('已保存', 'ok'); setTimeout(function () { location.reload(); }, 500); })
+      .catch(function (e) { window.toast(e.message, 'error'); btn.disabled = false; });
+  };
+
+  window.removeProvider = function (id, name) {
+    if (!confirm('删除供应商「' + name + '」？')) return;
+    window.api('DELETE', '/admin/api/ai/providers/' + id)
+      .then(function () { window.toast('已删除', 'ok'); setTimeout(function () { location.reload(); }, 400); })
+      .catch(function (e) { window.toast(e.message, 'error'); });
+  };
+
+  window.setDefault = function (id) {
+    window.api('POST', '/admin/api/ai/providers/' + id + '/default', {})
+      .then(function () { window.toast('已设为默认', 'ok'); setTimeout(function () { location.reload(); }, 400); })
+      .catch(function (e) { window.toast(e.message, 'error'); });
+  };
+
+  window.fetchModelsForProvider = function () {
+    var base = (document.getElementById('pvBase').value || '').trim();
+    var key = (document.getElementById('pvKey').value || '').trim();
+    window.api('POST', '/admin/api/ai/models', { base_url: base, api_key: key })
+      .then(function (d) {
+        var picker = document.getElementById('pvModelPicker');
+        picker.innerHTML = '';
+        (d.models || []).forEach(function (m) {
+          var opt = document.createElement('option');
+          opt.value = m; opt.textContent = m;
+          picker.appendChild(opt);
+        });
+        picker.style.display = (d.models || []).length ? 'block' : 'none';
+        picker.onchange = function () {
+          document.getElementById('pvModel').value = picker.value;
+        };
+        if ((d.models || []).length) {
+          document.getElementById('pvModel').value = d.models[0];
+          window.toast('取到 ' + d.models.length + ' 个模型', 'ok');
+        }
+      })
+      .catch(function (e) { window.toast(e.message, 'error'); });
+  };
+})();
+</script>
+{% endblock %}

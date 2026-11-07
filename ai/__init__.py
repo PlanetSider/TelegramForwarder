@@ -36,20 +36,51 @@ def _read_ai_config() -> dict:
         return {}
 
 
-async def get_ai_provider(model: Optional[str] = None) -> GenericProvider:
+def _resolve_provider(provider_id: Optional[int] = None) -> dict:
+    """从 ai_providers 表取一套配置；表为空时回落到 app_config 的旧键。"""
+    try:
+        from models.models import get_session
+        from rss.app.services import ai_service
+
+        session = get_session()
+        try:
+            cfg = ai_service.resolve_settings(session, provider_id)
+        finally:
+            session.close()
+        if cfg.get("base_url") or cfg.get("api_key"):
+            return cfg
+    except Exception as exc:  # pragma: no cover - 仅在库不可用时触发
+        logger.warning("读取 AI 供应商失败: %s", exc)
+
+    legacy = _read_ai_config()
+    return {
+        "name": "",
+        "base_url": (legacy.get("AI_BASE_URL") or "").strip(),
+        "api_key": (legacy.get("AI_API_KEY") or "").strip(),
+        "model": (legacy.get("AI_MODEL") or "").strip(),
+        "reasoning": (legacy.get("AI_REASONING") or "").strip(),
+    }
+
+
+async def get_ai_provider(model: Optional[str] = None,
+                          provider_id: Optional[int] = None) -> GenericProvider:
     """按控制台配置构造提供者。
 
-    ``model`` 是规则上单独指定的模型时优先使用，否则回落到全局默认模型。
+    ``provider_id`` 指定用哪套供应商（规则上可选），不传则用默认供应商；
+    ``model`` 是规则上单独指定的模型，优先于供应商自己的模型。
     """
-    cfg = _read_ai_config()
+    cfg = _resolve_provider(provider_id)
 
-    base_url = (cfg.get("AI_BASE_URL") or "").strip()
-    api_key = (cfg.get("AI_API_KEY") or "").strip()
-    reasoning = (cfg.get("AI_REASONING") or "").strip()
+    base_url = cfg["base_url"]
+    api_key = cfg["api_key"]
+    reasoning = cfg["reasoning"]
 
-    chosen = (model or "").strip() or (cfg.get("AI_MODEL") or "").strip() or DEFAULT_AI_MODEL
+    chosen = ((model or "").strip()
+              or cfg.get("model", "")
+              or DEFAULT_AI_MODEL)
 
     if not api_key and "127.0.0.1" not in base_url and "localhost" not in base_url:
-        raise ValueError("尚未配置 AI API Key，请在控制台「AI 服务」中填写")
+        raise ValueError("尚未配置 AI API Key，请在控制台「通道设置 · AI 服务」中添加供应商")
 
-    return GenericProvider(model=chosen, base_url=base_url, api_key=api_key, reasoning=reasoning)
+    return GenericProvider(model=chosen, base_url=base_url, api_key=api_key,
+                           reasoning=reasoning)

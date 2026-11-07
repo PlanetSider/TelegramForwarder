@@ -6,6 +6,14 @@
 <label class="switch"><input type="checkbox" data-field="{{ name }}" {{ 'checked' if checked else '' }}><span></span></label>
 {%- endmacro %}
 
+{% macro sel(name, value, options, width='220px') -%}
+<select class="input" data-field="{{ name }}" style="max-width:{{ width }}">
+  {% for opt_val, opt_label in options %}
+  <option value="{{ opt_val }}" {{ 'selected' if value|string == opt_val|string else '' }}>{{ opt_label }}</option>
+  {% endfor %}
+</select>
+{%- endmacro %}
+
 {% block content %}
 <div class="page-head">
   <div>
@@ -48,38 +56,40 @@
         <div class="field">
           <label>转发方式</label>
           <div class="val">
-            {% if rule.use_bot %}<span class="tag bot">机器人转发</span>
-            <span class="hint">保留转发的“转发来源”，但受频道禁止转发限制</span>
-            {% else %}<span class="tag user">用户账号转发</span>
-            <span class="hint">可突破复制/转发保护，但需要用户账号在源频道内</span>{% endif %}
+            {{ sel('use_bot', 'true' if rule.use_bot else 'false',
+                   [('true', '机器人转发'), ('false', '用户账号转发')]) }}
+            <span class="hint">机器人转发保留“转发来源”，但受频道禁止转发限制；用户账号可突破限制，但需在源频道内</span>
           </div>
         </div>
         <div class="field">
           <label>处理模式</label>
           <div class="val">
-            {% if rule.handle_mode == 'EDIT' %}<span class="tag">编辑原消息</span>
-            <span class="hint">直接修改源频道里的原帖，不产生新消息（仅频道可用）</span>
-            {% else %}<span class="tag">转发为新消息</span>{% endif %}
+            {{ sel('handle_mode', rule.handle_mode,
+                   [('FORWARD', '转发为新消息'), ('EDIT', '编辑原消息')]) }}
+            <span class="hint">编辑模式只改源频道原帖，不产生新消息（仅频道可用）</span>
           </div>
         </div>
         <div class="field">
           <label>消息格式</label>
-          <div class="val"><span class="tag">{{ rule.message_mode }}</span></div>
+          <div class="val">
+            {{ sel('message_mode', rule.message_mode,
+                   [('Markdown', 'Markdown'), ('HTML', 'HTML')]) }}
+          </div>
         </div>
         <div class="field">
           <label>链接预览</label>
-          <div class="val"><span class="tag">
-            {% if rule.is_preview == 'on' %}开启{% elif rule.is_preview == 'off' %}关闭{% else %}跟随原消息{% endif %}
-          </span></div>
+          <div class="val">
+            {{ sel('is_preview', rule.is_preview,
+                   [('on', '开启'), ('off', '关闭'), ('follow', '跟随原消息')]) }}
+          </div>
         </div>
         <div class="field">
           <label>延时处理</label>
           <div class="val">
             {{ sw('enable_delay', rule.enable_delay) }}
-            {% if rule.enable_delay %}
-            <span class="tag">{{ rule.delay_seconds }} 秒</span>
-            <span class="hint">等待期间重新拉取消息，可拿到编辑后的内容</span>
-            {% endif %}
+            <input class="input" type="number" min="0" max="600" data-field="delay_seconds"
+                   value="{{ rule.delay_seconds or 0 }}" style="width:90px">
+            <span class="hint">秒。等待期间重新拉取消息，可拿到编辑后的内容</span>
           </div>
         </div>
       </div>
@@ -128,12 +138,20 @@
     <div class="card-b">
       <div class="field">
         <label>关键字过滤</label>
-        <div class="val"><span class="tag">{{ rule.forward_mode }}</span>
-          <span class="hint">blacklist 排除 / whitelist 仅允许 / 两种组合模式</span></div>
+        <div class="val">
+          {{ sel('forward_mode', rule.forward_mode,
+                 [('blacklist', '仅黑名单'), ('whitelist', '仅白名单'),
+                  ('blacklist_then_whitelist', '先黑后白'), ('whitelist_then_blacklist', '先白后黑')],
+                 '240px') }}
+          <span class="hint">blacklist 排除 / whitelist 仅允许 / 两种组合模式</span>
+        </div>
       </div>
       <div class="field">
         <label>关键字添加模式</label>
-        <div class="val"><span class="tag">{{ rule.add_mode }}</span></div>
+        <div class="val">
+          {{ sel('add_mode', rule.add_mode,
+                 [('blacklist', '加入黑名单'), ('whitelist', '加入白名单')]) }}
+        </div>
       </div>
       <div class="field">
         <label>反转名单</label>
@@ -141,6 +159,14 @@
           {{ sw('enable_reverse_blacklist', rule.enable_reverse_blacklist) }}<span class="hint">反转黑名单</span>
           {{ sw('enable_reverse_whitelist', rule.enable_reverse_whitelist) }}<span class="hint">反转白名单</span>
         </div>
+      </div>
+      <div class="field">
+        <label>公共名单</label>
+        <div class="val">
+          {{ sw('use_global_whitelist', rule.use_global_whitelist) }}<span class="hint">启用公共白名单</span>
+          {{ sw('use_global_blacklist', rule.use_global_blacklist) }}<span class="hint">启用公共黑名单</span>
+        </div>
+        <div class="hint">名单内容在「全局设置 · 公共白名单 / 公共黑名单」里维护</div>
       </div>
     </div>
   </div>
@@ -239,7 +265,9 @@
           <label>大小过滤</label>
           <div class="val">
             {{ sw('enable_media_size_filter', rule.enable_media_size_filter) }}
-            <span class="tag">上限 {{ rule.max_media_size }} MB</span>
+            <input class="input" type="number" min="0" data-field="max_media_size"
+                   value="{{ rule.max_media_size or 10 }}" style="width:90px">
+            <span class="hint">MB</span>
           </div>
         </div>
         <div class="field">
@@ -250,15 +278,16 @@
           <label>扩展名过滤</label>
           <div class="val">
             {{ sw('enable_extension_filter', rule.enable_extension_filter) }}
-            <span class="tag">{{ rule.extension_filter_mode }}</span>
+            {{ sel('extension_filter_mode', rule.extension_filter_mode,
+                   [('blacklist', '黑名单'), ('whitelist', '白名单')], '140px') }}
           </div>
         </div>
         <div class="field">
           <label>扩展名列表</label>
           <div class="val">
-            {% if rule.media_extensions %}
-              {% for e in rule.media_extensions %}<span class="tag">{{ e }}</span>{% endfor %}
-            {% else %}<span class="hint">未设置</span>{% endif %}
+            <input class="input" data-field="media_extensions_text"
+                   value="{{ rule.media_extensions|join(', ') }}"
+                   placeholder="如 jpg, png, mp4（逗号分隔，不带点）" style="flex:1;min-width:220px">
           </div>
         </div>
         <div class="field">
@@ -280,10 +309,24 @@
         <div class="val">{{ sw('is_ai', rule.is_ai) }}</div>
       </div>
       <div class="field">
+        <label>供应商</label>
+        <div class="val">
+          <select class="input" data-field="ai_provider_id" style="max-width:260px">
+            <option value="">使用默认供应商</option>
+            {% for p in providers %}
+            <option value="{{ p.id }}" {{ 'selected' if rule.ai_provider_id == p.id else '' }}>
+              {{ p.name }}{% if p.is_default %}（默认）{% endif %}
+            </option>
+            {% endfor %}
+          </select>
+          <span class="hint">在「通道设置 · AI 服务」里增删改</span>
+        </div>
+      </div>
+      <div class="field">
         <label>模型</label>
         <div class="val" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
           <input class="input" data-field="ai_model" value="{{ rule.ai_model or '' }}"
-                 placeholder="留空则使用全局默认" style="flex:1;min-width:200px;max-width:320px">
+                 placeholder="留空则使用供应商的模型" style="flex:1;min-width:200px;max-width:320px">
           <button type="button" class="btn ghost btn-sm" onclick="pickModel()">获取模型</button>
         </div>
         <select id="ruleModelPicker" class="input"
@@ -301,7 +344,8 @@
       </div>
       <div class="field" style="display:block">
         <label>提示词</label>
-        <pre class="logbox" style="max-height:180px">{{ rule.ai_prompt or '（未设置，使用全局默认）' }}</pre>
+        <textarea class="input" data-field="ai_prompt" rows="4"
+                  placeholder="留空则使用全局默认提示词">{{ rule.ai_prompt or '' }}</textarea>
       </div>
     </div>
   </div>
@@ -312,7 +356,9 @@
       <div class="field">
         <label>启用总结</label>
         <div class="val">{{ sw('is_summary', rule.is_summary) }}
-          <span class="tag">{{ rule.summary_time }}</span></div>
+          <input class="input" type="time" data-field="summary_time"
+                 value="{{ rule.summary_time or '07:00' }}" style="width:120px">
+          <span class="hint">每天这个时间汇总一次</span></div>
       </div>
       <div class="field">
         <label>置顶总结</label>
@@ -320,7 +366,8 @@
       </div>
       <div class="field" style="display:block">
         <label>总结提示词</label>
-        <pre class="logbox" style="max-height:160px">{{ rule.summary_prompt or '（未设置，使用全局默认）' }}</pre>
+        <textarea class="input" data-field="summary_prompt" rows="3"
+                  placeholder="留空则使用全局默认总结提示词">{{ rule.summary_prompt or '' }}</textarea>
       </div>
     </div>
   </div>
@@ -503,9 +550,9 @@
         <div class="field">
           <label>同步到</label>
           <div class="val">
-            {% if rule.syncs %}
-              {% for sid in rule.syncs %}<span class="tag">#{{ sid }}</span>{% endfor %}
-            {% else %}<span class="hint">未配置</span>{% endif %}
+            <input class="input" data-field="syncs_text"
+                   value="{{ rule.syncs|join(', ') }}"
+                   placeholder="目标规则 ID，逗号分隔，如 3, 7" style="flex:1;min-width:220px">
           </div>
         </div>
       </div>
@@ -519,9 +566,13 @@
           <div class="val">{{ sw('is_ufb', rule.is_ufb) }}</div>
         </div>
         <div class="field"><label>域名</label>
-          <div class="val">{{ rule.ufb_domain or '（未设置）' }}</div></div>
+          <div class="val"><input class="input" data-field="ufb_domain"
+                                  value="{{ rule.ufb_domain or '' }}"
+                                  placeholder="如 example.com" style="width:240px"></div></div>
         <div class="field"><label>板块</label>
-          <div class="val"><span class="tag">{{ rule.ufb_item }}</span></div></div>
+          <div class="val"><input class="input" data-field="ufb_item"
+                                  value="{{ rule.ufb_item or 'main' }}"
+                                  placeholder="默认 main" style="width:160px"></div></div>
       </div>
     </div>
   </div>

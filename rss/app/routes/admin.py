@@ -46,7 +46,7 @@ def _ctx(request: Request, user, active: str, **extra):
         "project_name": "TG Forwarder",
         # 侧边栏「全局设置」下的二级菜单：Telegram / 飞书 已提升为「通道设置」一级入口
         "settings_groups": [(gid, title) for gid, title, _ in app_config.GROUPS
-                            if gid not in ("telegram", "feishu")],
+                            if gid not in ("telegram", "feishu", "ai")],
         "settings_group": "",
         # 侧边栏「通道设置」里飞书 / Lark 是两个页面，靠它判断高亮
         "platform": "",
@@ -115,10 +115,13 @@ async def admin_rule_detail(request: Request, rule_id: int,
     if not user:
         return _login_redirect()
 
+    from rss.app.services import ai_service
+
     session = get_session()
     try:
         rule = rule_service.get_rule(session, rule_id)
         siblings = rule_service.list_rules(session)
+        providers = ai_service.provider_rows(session)
     finally:
         session.close()
 
@@ -127,7 +130,8 @@ async def admin_rule_detail(request: Request, rule_id: int,
 
     return templates.TemplateResponse(
         "admin_rule_detail.html",
-        _ctx(request, user, "rules", rule=rule, siblings=siblings),
+        _ctx(request, user, "rules", rule=rule, siblings=siblings,
+             providers=providers),
     )
 
 
@@ -155,9 +159,13 @@ async def admin_settings(request: Request, group: str, user=Depends(get_current_
     if current is None:
         return RedirectResponse(url=f"/admin/settings/{app_config.GROUPS[0][0]}", status_code=302)
 
+    providers = []
     session = get_session()
     try:
         rows = app_config.as_display(session)
+        if group == "behavior":
+            from rss.app.services import ai_service
+            providers = ai_service.provider_rows(session)
     finally:
         session.close()
 
@@ -187,6 +195,7 @@ async def admin_settings(request: Request, group: str, user=Depends(get_current_
              current=current,
              view=view,
              ai_models=ai_models,
+             providers=providers,
              configs=configs),
     )
 
@@ -576,6 +585,118 @@ async def admin_api_delete_replace(replace_id: int, user=Depends(get_current_use
 
 
 # ---------------------------------------------------------------- 配置文件（P3）
+
+@router.get("/ai", response_class=HTMLResponse)
+async def admin_ai(request: Request, user=Depends(get_current_user)):
+    """AI 服务：多套 OpenAI 兼容供应商。"""
+    if not user:
+        return _login_redirect()
+
+    from rss.app.services import ai_service
+
+    session = get_session()
+    try:
+        providers = ai_service.provider_rows(session)
+    finally:
+        session.close()
+
+    return templates.TemplateResponse(
+        "admin_ai.html",
+        _ctx(request, user, "ai", providers=providers,
+             reasoning_options=ai_service.REASONING_OPTIONS),
+    )
+
+
+@router.get("/api/ai/providers")
+async def admin_api_ai_providers(user=Depends(get_current_user)):
+    if not user:
+        return _fail("未登录", 401)
+    from rss.app.services import ai_service
+    session = get_session()
+    try:
+        return JSONResponse({"ok": True, "providers": ai_service.provider_rows(session)})
+    finally:
+        session.close()
+
+
+@router.post("/api/ai/providers")
+async def admin_api_ai_provider_add(request: Request, user=Depends(get_current_user)):
+    if not user:
+        return _fail("未登录", 401)
+    from rss.app.services import ai_service
+    body = await _json_body(request)
+    session = get_session()
+    try:
+        provider = ai_service.add_provider(
+            session,
+            name=body.get("name") or "",
+            base_url=body.get("base_url") or "",
+            api_key=body.get("api_key") or "",
+            model=body.get("model") or "",
+            reasoning=body.get("reasoning") or "",
+            is_default=bool(body.get("is_default")),
+        )
+        return JSONResponse({"ok": True, "id": provider.id})
+    except ValueError as exc:
+        return _fail(str(exc), 400)
+    except Exception as exc:
+        logger.exception("新增 AI 供应商失败")
+        return _fail(f"保存失败: {exc}", 500)
+    finally:
+        session.close()
+
+
+@router.post("/api/ai/providers/{provider_id}")
+async def admin_api_ai_provider_update(provider_id: int, request: Request,
+                                       user=Depends(get_current_user)):
+    if not user:
+        return _fail("未登录", 401)
+    from rss.app.services import ai_service
+    body = await _json_body(request)
+    session = get_session()
+    try:
+        ai_service.update_provider(session, provider_id, **body)
+        return JSONResponse({"ok": True})
+    except LookupError as exc:
+        return _fail(str(exc), 404)
+    except Exception as exc:
+        logger.exception("更新 AI 供应商失败")
+        return _fail(f"保存失败: {exc}", 500)
+    finally:
+        session.close()
+
+
+@router.delete("/api/ai/providers/{provider_id}")
+async def admin_api_ai_provider_delete(provider_id: int,
+                                       user=Depends(get_current_user)):
+    if not user:
+        return _fail("未登录", 401)
+    from rss.app.services import ai_service
+    session = get_session()
+    try:
+        ai_service.delete_provider(session, provider_id)
+        return JSONResponse({"ok": True})
+    except LookupError as exc:
+        return _fail(str(exc), 404)
+    finally:
+        session.close()
+
+
+@router.post("/api/ai/providers/{provider_id}/default")
+async def admin_api_ai_provider_default(provider_id: int,
+                                        user=Depends(get_current_user)):
+    if not user:
+        return _fail("未登录", 401)
+    from rss.app.services import ai_service
+    session = get_session()
+    try:
+        ai_service.set_default(session, provider_id)
+        return JSONResponse({"ok": True})
+    except LookupError as exc:
+        return _fail(str(exc), 404)
+    finally:
+        session.close()
+
 
 @router.post("/api/ai/models")
 async def admin_api_ai_models(request: Request, user=Depends(get_current_user)):

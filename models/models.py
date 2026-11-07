@@ -64,6 +64,7 @@ class ForwardRule(Base):
     # AI相关字段
     is_ai = Column(Boolean, default=False)  # 是否启用AI处理
     ai_model = Column(String, nullable=True)  # 使用的AI模型
+    ai_provider_id = Column(Integer, nullable=True)  # 指定供应商，空则用默认供应商
     ai_prompt = Column(String, nullable=True)  # AI处理的prompt
     enable_ai_upload_image = Column(Boolean, default=False)  # 是否启用AI图片上传功能
     is_summary = Column(Boolean, default=False)  # 是否启用AI总结
@@ -77,6 +78,9 @@ class ForwardRule(Base):
     only_rss = Column(Boolean, default=False)  # 是否只转发RSS
     # 同步功能相关
     enable_sync = Column(Boolean, default=False)  # 是否启用规则同步功能
+    # 公共名单：全局设置里维护的关键字，可按规则开关后参与本规则的过滤
+    use_global_whitelist = Column(Boolean, default=False)
+    use_global_blacklist = Column(Boolean, default=False)
 
     # 直接把消息发到飞书/Lark（应用机器人），而不是 Telegram 目标群
     feishu_bot_id = Column(Integer, ForeignKey('feishu_bots.id'), nullable=True)
@@ -223,6 +227,23 @@ class FeishuWebhook(Base):
 
     def label(self) -> str:
         return (self.name or "").strip() or "未命名群机器人"
+
+
+class AIProvider(Base):
+    """一个 OpenAI 兼容接口的供应商，可以存多套并按规则选用。"""
+    __tablename__ = 'ai_providers'
+
+    id = Column(Integer, primary_key=True)
+    name = Column(String(64), nullable=False)
+    base_url = Column(String(255), nullable=True)
+    api_key = Column(String(255), nullable=True)
+    model = Column(String(128), nullable=True)
+    reasoning = Column(String(16), nullable=True)
+    is_default = Column(Boolean, default=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    def label(self) -> str:
+        return (self.name or "").strip() or "未命名供应商"
 
 
 class RSSConfig(Base):
@@ -414,6 +435,9 @@ def migrate_db(engine):
         'enable_reverse_whitelist': 'ALTER TABLE forward_rules ADD COLUMN enable_reverse_whitelist BOOLEAN DEFAULT FALSE',
         'only_rss': 'ALTER TABLE forward_rules ADD COLUMN only_rss BOOLEAN DEFAULT FALSE',
         'enable_sync': 'ALTER TABLE forward_rules ADD COLUMN enable_sync BOOLEAN DEFAULT FALSE',
+        'use_global_whitelist': 'ALTER TABLE forward_rules ADD COLUMN use_global_whitelist BOOLEAN DEFAULT FALSE',
+        'use_global_blacklist': 'ALTER TABLE forward_rules ADD COLUMN use_global_blacklist BOOLEAN DEFAULT FALSE',
+        'ai_provider_id': 'ALTER TABLE forward_rules ADD COLUMN ai_provider_id INTEGER',
         'feishu_bot_id': 'ALTER TABLE forward_rules ADD COLUMN feishu_bot_id INTEGER REFERENCES feishu_bots(id)',
         'feishu_chat_id': 'ALTER TABLE forward_rules ADD COLUMN feishu_chat_id VARCHAR(128)',
         'userinfo_template': 'ALTER TABLE forward_rules ADD COLUMN userinfo_template VARCHAR DEFAULT "**{name}**"',

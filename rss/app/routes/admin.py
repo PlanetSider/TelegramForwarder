@@ -117,27 +117,28 @@ async def admin_rule_detail(request: Request, rule_id: int,
 
 @router.get("/settings", response_class=HTMLResponse)
 async def admin_settings(request: Request, user=Depends(get_current_user)):
-    """全局设置。"""
+    """全局设置：读写 app_settings 表里的全部配置项。"""
     if not user:
         return _login_redirect()
 
+    from utils import app_config
     from utils import settings as settings_loader
-    from utils.constants import (
-        DEFAULT_TIMEZONE, DEFAULT_AI_MODEL, DEFAULT_AI_PROMPT,
-        DEFAULT_SUMMARY_PROMPT, RULES_PER_PAGE, KEYWORDS_PER_PAGE,
-        RSS_ENABLED, UFB_ENABLED,
-    )
-    import os
+
+    session = get_session()
+    try:
+        groups = app_config.grouped()
+        rows = app_config.as_display(session)
+    finally:
+        session.close()
+
+    # 模板按 key 取展示值：敏感项在这里已经打码，真实值不会进 HTML
+    view = {row["key"]: row for row in rows}
 
     try:
         ai_models = settings_loader.load_ai_models(type="dict")
     except Exception as exc:
         logger.warning("加载 AI 模型配置失败: %s", exc)
         ai_models = {}
-
-    key_status = {}
-    for prefix in ("OPENAI", "CLAUDE", "GEMINI", "DEEPSEEK", "QWEN", "GROK"):
-        key_status[prefix] = bool((os.getenv(f"{prefix}_API_KEY") or "").strip())
 
     from rss.app.services import config_service
     try:
@@ -149,19 +150,10 @@ async def admin_settings(request: Request, user=Depends(get_current_user)):
     return templates.TemplateResponse(
         "admin_settings.html",
         _ctx(request, user, "settings",
+             groups=groups,
+             view=view,
              ai_models=ai_models,
-             key_status=key_status,
-             configs=configs,
-             defaults={
-                 "timezone": DEFAULT_TIMEZONE,
-                 "ai_model": DEFAULT_AI_MODEL,
-                 "ai_prompt": DEFAULT_AI_PROMPT,
-                 "summary_prompt": DEFAULT_SUMMARY_PROMPT,
-                 "rules_per_page": RULES_PER_PAGE,
-                 "keywords_per_page": KEYWORDS_PER_PAGE,
-                 "rss_enabled": RSS_ENABLED,
-                 "ufb_enabled": UFB_ENABLED,
-             }),
+             configs=configs),
     )
 
 
@@ -483,3 +475,149 @@ async def admin_api_write_config(name: str, request: Request,
     except Exception as exc:
         logger.exception("写入配置失败 %s", name)
         return _fail(f"写入失败: {exc}", 500)
+
+
+# ---------------------------------------------------------------- 配置向导
+
+@router.get("/setup", response_class=HTMLResponse)
+async def admin_setup(request: Request, user=Depends(get_current_user)):
+    """初始化向导：填 Telegram 凭据 → 收验证码 → 两步验证。
+
+    向导本身也要登录，否则任何人都能改掉 API_ID 把实例劫走。
+    首次部署时唯一的账号就是刚注册的管理员。
+    """
+    if not user:
+        return _login_redirect()
+
+    from rss.app.services import bridge_client
+    from utils import app_config
+
+    status = await bridge_client.get_setup_status()
+
+    session = get_session()
+    try:
+        current = app_config.as_display(session)
+        configured = app_config.is_telegram_configured(session)
+        values = app_config.get_current(session)
+    finally:
+        session.close()
+
+    # 只回填非敏感项，密钥类一律留空让用户重填
+    defaults = {
+        "api_id": values.get("API_ID", ""),
+        "phone": values.get("PHONE_NUMBER", ""),
+    }
+
+    return templates.TemplateResponse(
+        "admin_setup.html",
+        _ctx(request, user, "setup",
+             status=status or {},
+             configured=configured,
+             current=current,
+             defaults=defaults),
+    )
+
+
+@router.get("/api/setup/status")
+async def admin_api_setup_status(user=Depends(get_current_user)):
+    """前端轮询：登录阶段是否变化。"""
+    if not user:
+        return _fail("未登录", 401)
+
+    from rss.app.services import bridge_client
+    status = await bridge_client.get_setup_status()
+    if status is None:
+        return JSONResponse({"ok": False, "error": "主进程内部桥不可达"}, status_code=503)
+    return JSONResponse(status)
+
+
+@router.post("/api/setup/send-code")
+async def admin_api_setup_send_code(request: Request, user=Depends(get_current_user)):
+    """保存 Telegram 凭据并发送验证码。"""
+    if not user:
+        return _fail("未登录", 401)
+
+    from rss.app.services import bridge_client
+
+    body = await _json_body(request)
+    api_id = str(body.get("api_id") or "").strip()
+    api_hash = str(body.get("api_hash") or "").strip()
+    phone = str(body.get("phone") or "").strip()
+    if not (api_id and api_hash and phone):
+        return _fail("API_ID、API_HASH、手机号都必须填写")
+
+    result = await bridge_client.send_code(api_id, api_hash, phone)
+    if result is None:
+        return JSONResponse({"ok": False, "error": "主进程内部桥不可达"}, status_code=503)
+    return JSONResponse(result, status_code=200 if result.get("ok") else 400)
+
+
+@router.post("/api/setup/verify-code")
+async def admin_api_setup_verify_code(request: Request, user=Depends(get_current_user)):
+    """提交登录验证码。"""
+    if not user:
+        return _fail("未登录", 401)
+
+    from rss.app.services import bridge_client
+
+    body = await _json_body(request)
+    code = str(body.get("code") or "").strip()
+    if not code:
+        return _fail("请输入验证码")
+
+    result = await bridge_client.verify_code(code)
+    if result is None:
+        return JSONResponse({"ok": False, "error": "主进程内部桥不可达"}, status_code=503)
+    return JSONResponse(result, status_code=200 if result.get("ok") else 400)
+
+
+@router.post("/api/setup/verify-password")
+async def admin_api_setup_verify_password(request: Request, user=Depends(get_current_user)):
+    """提交两步验证（2FA）密码。"""
+    if not user:
+        return _fail("未登录", 401)
+
+    from rss.app.services import bridge_client
+
+    body = await _json_body(request)
+    password = str(body.get("password") or "")
+    if not password:
+        return _fail("请输入两步验证密码")
+
+    result = await bridge_client.verify_password(password)
+    if result is None:
+        return JSONResponse({"ok": False, "error": "主进程内部桥不可达"}, status_code=503)
+    return JSONResponse(result, status_code=200 if result.get("ok") else 400)
+
+
+@router.post("/api/config")
+@router.post("/api/setup/config")
+async def admin_api_setup_config(request: Request, user=Depends(get_current_user)):
+    """保存任意白名单配置项（配置页与向导共用）。"""
+    if not user:
+        return _fail("未登录", 401)
+
+    body = await _json_body(request)
+    values = body.get("values")
+    if not isinstance(values, dict) or not values:
+        return _fail("没有需要保存的配置")
+
+    from rss.app.services import bridge_client
+
+    # 优先让主进程保存：它写库的同时会同步 os.environ，配置立即生效。
+    result = await bridge_client.save_config(values)
+    if result is not None:
+        return JSONResponse(result, status_code=200 if result.get("ok") else 400)
+
+    # 桥不可达时退化为本地写库，改动会在主进程重启后生效
+    from utils import app_config
+
+    session = get_session()
+    try:
+        saved, errors = app_config.save(session, values)
+    finally:
+        session.close()
+
+    if errors:
+        return JSONResponse({"ok": False, "saved": saved, "errors": errors}, status_code=400)
+    return JSONResponse({"ok": True, "saved": saved, "restart_required": True})

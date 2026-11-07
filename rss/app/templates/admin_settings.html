@@ -6,57 +6,61 @@
 <div class="page-head">
   <div>
     <h1>全局设置</h1>
-    <p>进程级默认值与凭据状态；单条规则的差异在规则详情页调整</p>
+    <p>全部保存在数据库中；标注「需重启」的项在重启容器后生效</p>
   </div>
-  <div class="actions"><a class="btn" href="/admin/settings">刷新</a></div>
+  <div class="actions">
+    <button class="btn primary" id="btnSaveAll" onclick="saveAllSettings()">保存全部修改</button>
+  </div>
 </div>
 
 <div class="note blue" style="margin-bottom:14px">
-  本页当前为 <b>只读</b>。环境变量类配置需要修改 <code class="mono">.env</code> 并重启容器；
-  文件类配置（AI 模型清单、总结时间、延时选项等）的在线编辑在 P3 接入。
+  配置优先级：<b>数据库 &gt; 环境变量</b>。普通项留空表示清除并回落到默认值；
+  密码类字段留空表示「不修改」。
 </div>
 
-<div class="grid g2" style="margin-bottom:16px">
-  <div class="card">
-    <div class="card-h"><h3>默认值</h3><span class="sub">新建规则时继承</span></div>
-    <div class="card-b">
-      <div class="field"><label>时区</label>
-        <div class="val"><span class="tag">{{ defaults.timezone }}</span>
-          <span class="hint">DEFAULT_TIMEZONE</span></div></div>
-      <div class="field"><label>默认 AI 模型</label>
-        <div class="val"><span class="tag">{{ defaults.ai_model }}</span>
-          <span class="hint">DEFAULT_AI_MODEL</span></div></div>
-      <div class="field"><label>分页</label>
-        <div class="val"><span class="tag">规则 {{ defaults.rules_per_page }}</span>
-          <span class="tag">关键字 {{ defaults.keywords_per_page }}</span></div></div>
-      <div class="field"><label>模块开关</label>
-        <div class="val">
-          <span class="tag {{ 'ok' if defaults.rss_enabled else 'off' }}">RSS {{ '开启' if defaults.rss_enabled else '关闭' }}</span>
-          <span class="tag {{ 'ok' if defaults.ufb_enabled else 'off' }}">UFB {{ '开启' if defaults.ufb_enabled else '关闭' }}</span>
-        </div>
-      </div>
-    </div>
-  </div>
+{% for gid, title, desc, items in groups %}
+<div class="card" style="margin-bottom:16px">
+  <div class="card-h"><h3>{{ title }}</h3><span class="sub">{{ desc }}</span></div>
+  <div class="card-b">
+    <div class="grid g2">
+      {% for item in items %}
+      {% set row = view.get(item.key) or {} %}
+      <div class="field" style="margin-bottom:12px">
+        <label for="cfg-{{ item.key }}">
+          {{ item.label }}
+          {% if item.restart %}<span class="tag warn">需重启</span>{% endif %}
+          {% if row.get('configured') %}<span class="tag ok">已配置</span>{% else %}<span class="tag off">未设置</span>{% endif %}
+        </label>
 
-  <div class="card">
-    <div class="card-h"><h3>AI 凭据</h3><span class="sub">来自 .env</span></div>
-    <div class="card-b">
-      {% for prefix, ok in key_status.items() %}
-      <div class="field" style="margin-bottom:8px">
-        <label>{{ prefix }}</label>
-        <div class="val">
-          {% if ok %}<span class="tag ok">● 已配置</span>
-          {% else %}<span class="tag off">○ 未配置</span>{% endif %}
+        {% if item.kind == 'bool' %}
+        <select id="cfg-{{ item.key }}" data-key="{{ item.key }}" data-secret="0"
+                style="width:100%;padding:9px 10px;border:1px solid #dbe2ea;border-radius:8px;background:#fff">
+          <option value="true" {% if (row.get('display') or '')|lower == 'true' %}selected{% endif %}>开启</option>
+          <option value="false" {% if (row.get('display') or '')|lower != 'true' %}selected{% endif %}>关闭</option>
+        </select>
+        {% elif item.secret %}
+        <input id="cfg-{{ item.key }}" data-key="{{ item.key }}" data-secret="1"
+               type="password" value="" autocomplete="off"
+               placeholder="{{ row.get('display') or '未设置' }}"
+               style="width:100%;box-sizing:border-box;padding:9px 10px;border:1px solid #dbe2ea;border-radius:8px">
+        {% else %}
+        <input id="cfg-{{ item.key }}" data-key="{{ item.key }}" data-secret="0"
+               type="{{ 'number' if item.kind == 'int' else 'text' }}"
+               value="{{ row.get('display') or '' }}" autocomplete="off"
+               {% if item.kind == 'time' %}placeholder="HH:MM"{% endif %}
+               style="width:100%;box-sizing:border-box;padding:9px 10px;border:1px solid #dbe2ea;border-radius:8px">
+        {% endif %}
+
+        <div class="hint" style="margin-top:4px;font-size:12px;color:#6b7684">
+          {{ item.help }}
+          <code class="mono" style="opacity:.7">{{ item.key }}</code>
         </div>
       </div>
       {% endfor %}
-      <div class="hint" style="margin-top:10px">
-        变量名形如 <code class="mono">OPENAI_API_KEY</code> / <code class="mono">CLAUDE_API_KEY</code>，
-        也可用 <code class="mono">*_API_BASE</code> 指向兼容网关。
-      </div>
     </div>
   </div>
 </div>
+{% endfor %}
 
 <div class="card" style="margin-bottom:16px">
   <div class="card-h"><h3>AI 模型清单</h3><span class="sub">config/ai_models.json</span></div>
@@ -77,20 +81,6 @@
 </div>
 
 <div class="card">
-  <div class="card-h"><h3>提示词默认值</h3></div>
-  <div class="card-b">
-    <div class="field" style="display:block">
-      <label>AI 改写提示词</label>
-      <pre class="logbox" style="max-height:120px">{{ defaults.ai_prompt }}</pre>
-    </div>
-    <div class="field" style="display:block;margin-top:12px">
-      <label>总结提示词</label>
-      <pre class="logbox" style="max-height:120px">{{ defaults.summary_prompt }}</pre>
-    </div>
-  </div>
-</div>
-
-<div class="card" style="margin-top:16px">
   <div class="card-h">
     <h3>运行时配置文件</h3>
     <span class="sub">config/ 目录 · 保存前会做格式校验</span>
@@ -122,6 +112,49 @@
 
 {% block scripts %}
 <script>
+async function saveAllSettings() {
+  const payload = {};
+  document.querySelectorAll('[data-key]').forEach(function (el) {
+    const key = el.dataset.key;
+    const isSecret = el.dataset.secret === '1';
+    // 密码类字段留空 = 不修改；其他字段留空 = 清除
+    if (isSecret && el.value === '') return;
+    payload[key] = el.value;
+  });
+
+  if (Object.keys(payload).length === 0) {
+    toast('没有需要保存的修改', 'err');
+    return;
+  }
+
+  const btn = document.getElementById('btnSaveAll');
+  btn.disabled = true;
+  btn.textContent = '保存中…';
+  try {
+    const resp = await fetch('/admin/api/config', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ values: payload }),
+    });
+    let data = {};
+    try { data = await resp.json(); } catch (e) { /* 忽略 */ }
+
+    if (data.ok) {
+      toast('已保存 ' + (data.saved || []).length + ' 项配置');
+      setTimeout(function () { location.reload(); }, 600);
+    } else {
+      const errors = data.errors || [];
+      const first = Array.isArray(errors) ? errors[0] : errors;
+      toast(first || data.error || '保存失败', 'err');
+    }
+  } catch (e) {
+    toast('请求失败：' + e, 'err');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '保存全部修改';
+  }
+}
+
 (function () {
   document.querySelectorAll('[data-cfg-save]').forEach(function (btn) {
     btn.addEventListener('click', function () {

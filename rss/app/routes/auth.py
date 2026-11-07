@@ -8,6 +8,7 @@ import jwt
 from datetime import datetime, timedelta
 import pytz
 from utils.constants import DEFAULT_TIMEZONE, RSS_DATA_DIR
+from utils.password_policy import describe as describe_password_rule, validate_password
 from typing import Optional
 from sqlalchemy.orm import joinedload
 import models.models as models
@@ -144,7 +145,10 @@ async def register_page(request: Request):
         users = db_session.query(User).all()
         if users:
             return RedirectResponse(url="/login", status_code=status.HTTP_302_FOUND)
-        return templates.TemplateResponse("register.html", {"request": request})
+        return templates.TemplateResponse(
+            "register.html",
+            {"request": request, "password_rule": describe_password_rule()},
+        )
     finally:
         db_session.close()
 
@@ -158,7 +162,18 @@ async def register(request: Request):
     if password != confirm_password:
         return templates.TemplateResponse(
             "register.html",
-            {"request": request, "error": "两次输入的密码不一致"},
+            {"request": request, "error": "两次输入的密码不一致",
+             "password_rule": describe_password_rule()},
+            status_code=status.HTTP_400_BAD_REQUEST
+        )
+
+    # 密码强度：至少 8 位，且包含大小写字母与数字
+    rule_ok, rule_error = validate_password(password or "")
+    if not rule_ok:
+        return templates.TemplateResponse(
+            "register.html",
+            {"request": request, "error": rule_error,
+             "password_rule": describe_password_rule()},
             status_code=status.HTTP_400_BAD_REQUEST
         )
     
@@ -227,9 +242,10 @@ async def change_password(
         
         if not new_password:
             return JSONResponse({"success": False, "message": "请输入新密码"})
-        
-        if len(new_password) < 8:
-            return JSONResponse({"success": False, "message": "新密码长度必须至少为8个字符"})
+
+        rule_ok, rule_error = validate_password(new_password)
+        if not rule_ok:
+            return JSONResponse({"success": False, "message": rule_error})
         
         if new_password != confirm_password:
             return JSONResponse({"success": False, "message": "新密码和确认密码不一致"})

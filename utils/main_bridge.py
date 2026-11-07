@@ -228,6 +228,121 @@ async def _handle_create_rule(request: web.Request) -> web.Response:
         session.close()
 
 
+async def _handle_setup_status(request: web.Request) -> web.Response:
+    """配置向导轮询用：当前登录阶段 + 凭据是否齐全。"""
+    from models.models import get_session
+    from utils import app_config
+    from utils.telegram_login import login_manager
+
+    session = get_session()
+    try:
+        configured = app_config.is_telegram_configured(session)
+    except Exception as exc:
+        logger.debug("读取配置状态失败: %s", exc)
+        configured = False
+    finally:
+        session.close()
+
+    payload: Dict[str, Any] = {"ok": True, "configured": configured}
+    payload.update(login_manager.snapshot())
+    return web.json_response(payload)
+
+
+async def _handle_send_code(request: web.Request) -> web.Response:
+    """保存 Telegram 凭据并发送登录验证码。"""
+    from models.models import get_session
+    from utils import app_config
+    from utils.telegram_login import login_manager
+
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+
+    api_id = str(body.get("api_id") or "").strip()
+    api_hash = str(body.get("api_hash") or "").strip()
+    phone = str(body.get("phone") or "").strip()
+    if not (api_id and api_hash and phone):
+        return _json_error("API_ID、API_HASH、手机号都必须填写")
+
+    session = get_session()
+    try:
+        _, errors = app_config.save(session, {
+            "API_ID": api_id,
+            "API_HASH": api_hash,
+            "PHONE_NUMBER": phone,
+        })
+    finally:
+        session.close()
+    if errors:
+        return _json_error("；".join(errors))
+
+    snapshot = await login_manager.begin(api_id, api_hash, phone)
+    ok = snapshot.get("status") in ("code_sent", "authorized")
+    return web.json_response({"ok": ok, **snapshot}, status=200 if ok else 400)
+
+
+async def _handle_verify_code(request: web.Request) -> web.Response:
+    """提交登录验证码。"""
+    from utils.telegram_login import login_manager
+
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+
+    code = str(body.get("code") or "").strip()
+    if not code:
+        return _json_error("请输入验证码")
+
+    snapshot = await login_manager.submit_code(code)
+    ok = snapshot.get("status") in ("authorized", "need_password")
+    return web.json_response({"ok": ok, **snapshot}, status=200 if ok else 400)
+
+
+async def _handle_verify_password(request: web.Request) -> web.Response:
+    """提交两步验证（2FA）密码。"""
+    from utils.telegram_login import login_manager
+
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+
+    password = str(body.get("password") or "")
+    if not password:
+        return _json_error("请输入两步验证密码")
+
+    snapshot = await login_manager.submit_password(password)
+    ok = snapshot.get("status") == "authorized"
+    return web.json_response({"ok": ok, **snapshot}, status=200 if ok else 400)
+
+
+async def _handle_save_config(request: web.Request) -> web.Response:
+    """保存配置项（向导与配置页共用），只接受白名单内的键。"""
+    from models.models import get_session
+    from utils import app_config
+
+    try:
+        body = await request.json()
+    except Exception:
+        return _json_error("请求体不是合法 JSON")
+
+    updates = body.get("values")
+    if not isinstance(updates, dict) or not updates:
+        return _json_error("没有需要保存的配置")
+
+    session = get_session()
+    try:
+        saved, errors = app_config.save(session, updates)
+    finally:
+        session.close()
+
+    if errors:
+        return web.json_response({"ok": False, "saved": saved, "errors": errors}, status=400)
+    return web.json_response({"ok": True, "saved": saved})
+
+
 async def start_bridge(host: str = DEFAULT_HOST, port: int = DEFAULT_PORT):
     """在当前事件循环里启动内部 HTTP 服务（幂等，失败只告警）。"""
     ensure_token()
@@ -236,6 +351,11 @@ async def start_bridge(host: str = DEFAULT_HOST, port: int = DEFAULT_PORT):
     app.router.add_get("/internal/status", _handle_status)
     app.router.add_get("/internal/dialogs", _handle_dialogs)
     app.router.add_post("/internal/rules", _handle_create_rule)
+    app.router.add_get("/internal/setup/status", _handle_setup_status)
+    app.router.add_post("/internal/setup/send-code", _handle_send_code)
+    app.router.add_post("/internal/setup/verify-code", _handle_verify_code)
+    app.router.add_post("/internal/setup/verify-password", _handle_verify_password)
+    app.router.add_post("/internal/setup/config", _handle_save_config)
 
     runner = web.AppRunner(app, access_log=None)
     try:

@@ -17,7 +17,7 @@ def env_bool(name: str, default: bool = False) -> bool:
 BASE_DIR = Path(__file__).parent.parent
 TEMP_DIR = os.path.join(BASE_DIR, 'temp')
 
-RSS_HOST = os.getenv('RSS_HOST', '127.0.0.1')
+RSS_HOST = os.getenv('RSS_HOST', '0.0.0.0')
 RSS_PORT = os.getenv('RSS_PORT', '8000')
 
 # RSS基础URL，如果未设置，则使用请求的URL

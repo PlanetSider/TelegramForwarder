@@ -1,8 +1,25 @@
+"""Telegram 消息转发器入口。
+
+启动顺序是被刻意设计的，改动前请先看这里：
+
+1. ``bootstrap_runtime_env()`` 把数据库里保存的配置写进 ``os.environ``。
+   它必须是**第一条**执行语句——``utils/constants.py``、``models/models.py``
+   等模块在 import 期间就会读取环境变量，晚一步注入就会读到默认值。
+2. 起内部桥 + WebUI。这一步不依赖 Telegram 凭据，因此首次部署、
+   凭据填错、会话失效时控制台都仍然可用。
+3. 只有凭据齐全且会话已授权，才启动 Telegram 客户端与转发链路。
+
+配置来源优先级：数据库 > 环境变量（``load_dotenv`` 用的是 override=False）。
+"""
+from utils.bootstrap import bootstrap_runtime_env
+
+# 必须早于任何业务模块 import
+bootstrap_runtime_env()
+
 from telethon import TelegramClient, types
 from telethon.tl.types import BotCommand
 from telethon.tl.functions.bots import SetBotCommandsRequest
-from models.models import init_db
-from dotenv import load_dotenv
+from models.models import init_db, get_session
 from message_listener import setup_listeners
 import os
 import asyncio
@@ -15,9 +32,10 @@ from scheduler.chat_updater import ChatUpdater
 from handlers.bot_handler import send_welcome_message
 from rss.main import app as rss_app
 from utils.log_config import setup_logging
-from utils.constants import RSS_ENABLED
 from utils.feishu_bot import run_feishu_bot
 from utils.main_bridge import ensure_token, start_bridge
+from utils import app_config
+from utils.telegram_login import STATUS_AUTHORIZED, login_manager
 
 # 设置Docker日志的默认配置，如果docker-compose.yml中没有配置日志选项将使用这些值
 os.environ.setdefault('DOCKER_LOG_MAX_SIZE', '10m')
@@ -28,20 +46,17 @@ setup_logging()
 
 logger = logging.getLogger(__name__)
 
-# 加载环境变量
-load_dotenv()
-
-# 从环境变量获取配置
-api_id = os.getenv('API_ID')
-api_hash = os.getenv('API_HASH')
-bot_token = os.getenv('BOT_TOKEN')
-phone_number = os.getenv('PHONE_NUMBER')
-
 # 创建 DBOperations 实例
 db_ops = None
 
 scheduler = None
 chat_updater = None
+rss_process = None
+
+# 客户端在拿到凭据之后才构造，模块级先占位：
+# utils/common.get_user_client() 依赖 main 模块上的这两个名字存在。
+user_client = None
+bot_client = None
 
 
 async def init_db_ops():
@@ -63,16 +78,12 @@ def clear_temp_dir():
         os.remove(os.path.join('./temp', file))
 
 
-# 创建客户端
-user_client = TelegramClient('./sessions/user', api_id, api_hash)
-bot_client = TelegramClient('./sessions/bot', api_id, api_hash)
-
-# 初始化数据库
+# 初始化数据库（建表 + 迁移，不依赖任何凭据）
 engine = init_db()
 
 
 def run_rss_server(host: str, port: int):
-    """在新进程中运行 RSS 服务器"""
+    """在子进程中运行控制台服务"""
     uvicorn.run(
         rss_app,
         host=host,
@@ -80,89 +91,151 @@ def run_rss_server(host: str, port: int):
     )
 
 
-async def start_clients():
-    # 初始化 DBOperations
+def start_webui():
+    """启动控制台子进程。
+
+    控制台是**无条件启动**的：首次部署时数据库里还没有任何凭据，
+    正是通过它来完成配置。端口固定由容器映射（compose: 9804 -> 8000）。
+    """
+    global rss_process
+    host = os.getenv('RSS_HOST', '0.0.0.0')
+    port = int(os.getenv('RSS_PORT', '8000'))
+    rss_process = multiprocessing.Process(
+        target=run_rss_server,
+        args=(host, port),
+        daemon=True,
+    )
+    rss_process.start()
+    logger.info("控制台已启动: http://%s:%s/admin（首次访问请先注册管理员账号）", host, port)
+    return rss_process
+
+
+def build_clients():
+    """按当前配置构造 Telethon 客户端。"""
+    global user_client, bot_client
+    user_client = TelegramClient('./sessions/user', int(os.getenv('API_ID')), os.getenv('API_HASH'))
+    bot_client = TelegramClient('./sessions/bot', int(os.getenv('API_ID')), os.getenv('API_HASH'))
+    return user_client, bot_client
+
+
+async def user_session_authorized() -> bool:
+    """用一个短连接检查会话文件是否已授权。
+
+    直接调用 ``client.start(phone=...)`` 在未授权时会阻塞等待终端输入验证码，
+    在容器里就是一个永不返回的挂起。先检查，避免这种情况。
+    """
+    try:
+        probe = TelegramClient('./sessions/user', int(os.getenv('API_ID')), os.getenv('API_HASH'))
+    except (TypeError, ValueError):
+        return False
+    try:
+        await probe.connect()
+        return await probe.is_user_authorized()
+    except Exception as e:
+        logger.debug("检查 Telegram 会话状态失败: %s", e)
+        return False
+    finally:
+        try:
+            await probe.disconnect()
+        except Exception:
+            pass
+
+
+async def start_telegram() -> bool:
+    """启动 Telegram 相关的一切；凭据或会话不满足时安静返回 False。"""
     global db_ops, scheduler, chat_updater
-    db_ops = await DBOperations.create()
+
+    db_ops = db_ops or await DBOperations.create()
+
+    session = get_session()
+    try:
+        creds = app_config.read_credentials(session)
+    finally:
+        session.close()
+
+    missing = [name for name, value in creds.items() if not value]
+    if missing:
+        logger.info("尚未配置 %s，Telegram 链路待配置", '、'.join(missing))
+        return False
+
+    if not await user_session_authorized():
+        logger.info("Telegram 用户会话未授权，等待在控制台完成登录")
+        return False
 
     try:
-        # 启动用户客户端
-        await user_client.start(phone=phone_number)
+        build_clients()
+
+        await user_client.start(phone=creds.get('PHONE_NUMBER'))
         me_user = await user_client.get_me()
-        print(f'用户客户端已启动: {me_user.first_name} (@{me_user.username})')
+        logger.info("用户客户端已启动: %s (@%s)", me_user.first_name, me_user.username)
 
-        # 启动机器人客户端
-        await bot_client.start(bot_token=bot_token)
+        await bot_client.start(bot_token=creds.get('BOT_TOKEN'))
         me_bot = await bot_client.get_me()
-        print(f'机器人客户端已启动: {me_bot.first_name} (@{me_bot.username})')
+        logger.info("机器人客户端已启动: %s (@%s)", me_bot.first_name, me_bot.username)
 
-        # 设置消息监听器
         await setup_listeners(user_client, bot_client)
-
-        # 注册命令
         await register_bot_commands(bot_client)
 
-        # 创建并启动调度器
         scheduler = SummaryScheduler(user_client, bot_client)
         await scheduler.start()
-        
-        # 创建并启动聊天信息更新器
+
         chat_updater = ChatUpdater(user_client)
         await chat_updater.start()
 
-        # 内部桥：让 RSS/控制台子进程能查询 Telegram 状态与会话列表。
-        # 必须在 fork 出 RSS 子进程之前生成 token，子进程才能读到同一份。
-        bridge_runner = None
-        try:
-            ensure_token()
-            bridge_runner = await start_bridge()
-        except Exception as e:
-            logger.warning(f"启动内部桥失败（控制台将无法显示 Telegram 状态）: {e}")
-
-        # 如果启用了 RSS 服务
-        if RSS_ENABLED:
-            try:
-                rss_host = os.getenv('RSS_HOST', '0.0.0.0')
-                rss_port = int(os.getenv('RSS_PORT', '8000'))
-                logger.info(f"正在启动 RSS 服务 (host={rss_host}, port={rss_port})")
-                
-                # 在新进程中启动 RSS 服务
-                rss_process = multiprocessing.Process(
-                    target=run_rss_server,
-                    args=(rss_host, rss_port)
-                )
-                rss_process.start()
-                logger.info("RSS 服务启动成功")
-            except Exception as e:
-                logger.error(f"启动 RSS 服务失败: {str(e)}")
-                logger.exception(e)
-        else:
-            logger.info("RSS 服务未启用")
-
-        # 启动飞书应用机器人（未配置 FEISHU_APP_ID/SECRET 时会在内部安静退出）
-        asyncio.create_task(run_feishu_bot())
-        logger.info("飞书应用机器人任务已创建")
-
-        # 发送欢迎消息
         await send_welcome_message(bot_client)
+        return True
+    except Exception as e:
+        logger.error("启动 Telegram 链路失败: %s", e)
+        logger.exception(e)
+        return False
 
-        # 等待两个客户端都断开连接
+
+async def start_clients():
+    """总编排：先让控制台可用，再按配置决定是否连 Telegram。"""
+    global db_ops
+    db_ops = await DBOperations.create()
+
+    # 内部桥的 token 必须在 fork 子进程之前生成，子进程才能读到同一份
+    ensure_token()
+    try:
+        await start_bridge()
+    except Exception as e:
+        logger.warning("启动内部桥失败（控制台将无法显示 Telegram 状态）: %s", e)
+
+    # 控制台无条件启动
+    start_webui()
+
+    # 飞书推送不依赖 Telegram，先起；未配置时在内部安静退出
+    asyncio.create_task(run_feishu_bot())
+
+    try:
+        started = await start_telegram()
+        if not started:
+            logger.warning("=" * 60)
+            logger.warning("尚未完成配置：请打开控制台 /admin 注册账号，")
+            logger.warning("再按向导填写 API_ID / API_HASH / BOT_TOKEN / 手机号 并完成验证码登录。")
+            logger.warning("配置完成后会自动启动，无需重启容器。")
+            logger.warning("=" * 60)
+            # 等待向导里的登录流程把状态置为已授权
+            while login_manager.status != STATUS_AUTHORIZED:
+                await asyncio.sleep(2)
+            logger.info("检测到登录成功，正在启动 Telegram 链路…")
+            if not await start_telegram():
+                logger.error("配置完成后启动 Telegram 仍然失败，请查看日志")
+                return
+
         await asyncio.gather(
             user_client.run_until_disconnected(),
             bot_client.run_until_disconnected()
         )
     finally:
-        # 关闭 DBOperations
         if db_ops and hasattr(db_ops, 'close'):
             await db_ops.close()
-        # 停止调度器
         if scheduler:
             scheduler.stop()
-        # 停止聊天信息更新器
         if chat_updater:
             chat_updater.stop()
-        # 如果 RSS 服务在运行，停止它
-        if 'rss_process' in locals() and rss_process.is_alive():
+        if rss_process and rss_process.is_alive():
             rss_process.terminate()
             rss_process.join()
 

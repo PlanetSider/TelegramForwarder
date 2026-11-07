@@ -1,31 +1,57 @@
+# Telegram Forwarder 部署编排
+#
+# 镜像由 GitHub Actions 自动构建（见 .github/workflows/docker-publish.yml），
+# 发布到 GHCR：ghcr.io/planetsider/telegramforwarder
+#
+# 首次使用：
+#   1. docker compose up -d
+#   2. 浏览器打开 http://<服务器IP>:9804/admin
+#   3. 注册管理员账号 → 按「配置向导」填 Telegram 凭据并完成验证码登录
+#
+# 本项目不再需要 .env 文件：所有配置都保存在 ./db 下的 SQLite 数据库里。
+
 services:
   telegram-forwarder:
-    # 镜像由 GitHub Actions 自动构建并发布到 GHCR（见 .github/workflows/docker-publish.yml）
-    # 首次使用前请在仓库 Packages 页面将镜像可见性改为 Public，或先执行 docker login ghcr.io
+    # 直接拉取构建好的多架构镜像（linux/amd64、linux/arm64）
+    # 若镜像包还是私有的，先执行一次：docker login ghcr.io
     image: ghcr.io/planetsider/telegramforwarder:latest
-    # 如需本地构建而非拉取镜像，注释掉上面的 image 行并启用下面这行：
+
+    # 想在本机从源码构建时，注释掉上面的 image，并启用下面这行
     # build: .
+
     container_name: telegram-forwarder
-    # 如果需要使用 RSS 功能，请取消以下注释
-    # ports:
-    #   - 9804:8000
     restart: unless-stopped
+
+    # 控制台端口：宿主机 9804 → 容器 8000
+    # 容器内固定监听 0.0.0.0:8000（见 Dockerfile 的 EXPOSE），无需其它配置
+    # 只想本机访问可改成 "127.0.0.1:9804:8000"
+    ports:
+      - "9804:8000"
+
     volumes:
+      # 数据库：转发规则、账号配置、RSS 订阅源，务必保留
       - ./db:/app/db
-      - ./.env:/app/.env
-      - ./logs:/app/logs
+      # Telegram 登录会话，删掉就要重新走一遍验证码登录
       - ./sessions:/app/sessions
-      - ./temp:/app/temp
-      - ./ufb/config:/app/ufb/config
+      # 运行时文本配置：AI 模型清单、总结时间、延时与大小选项等
       - ./config:/app/config
+      # 运行日志
+      - ./logs:/app/logs
+      # 媒体转发时的临时中转目录
+      - ./temp:/app/temp
+      # RSS 订阅源的条目与媒体文件
       - ./rss/data:/app/rss/data
       - ./rss/media:/app/rss/media
+      # UFB 联动配置，未使用该功能可以删掉这一行
+      - ./ufb/config:/app/ufb/config
+
     logging:
       driver: "json-file"
       options:
         max-size: "10m"
         max-file: "3"
         compress: "true"
-    stdin_open: true
-    tty: true
 
+    # 登录验证码在网页里填写，不需要交互式终端
+    stdin_open: false
+    tty: false

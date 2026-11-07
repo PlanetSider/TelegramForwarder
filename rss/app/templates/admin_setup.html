@@ -1,0 +1,245 @@
+{% extends "admin_base.html" %}
+{% block title %}配置向导{% endblock %}
+{% block crumb %}配置向导{% endblock %}
+
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>配置向导</h1>
+    <div class="note">所有配置都保存在数据库里，不再需要 .env 文件。</div>
+  </div>
+  <span class="tag" id="stateTag">读取中</span>
+</div>
+
+<div class="card">
+  <div class="card-h">当前状态</div>
+  <div class="card-b">
+    <div id="stateHint" class="note blue">正在读取主进程状态…</div>
+  </div>
+</div>
+
+<div class="card" id="credCard">
+  <div class="card-h">第 1 步 · Telegram 凭据</div>
+  <div class="card-b">
+    <div class="grid g2">
+      <div class="field">
+        <label for="apiId">API_ID</label>
+        <input id="apiId" placeholder="1234567" value="{{ defaults.api_id }}" autocomplete="off">
+      </div>
+      <div class="field">
+        <label for="apiHash">API_HASH</label>
+        <input id="apiHash" placeholder="32 位十六进制字符串" autocomplete="off">
+      </div>
+      <div class="field">
+        <label for="phone">手机号（含国家码）</label>
+        <input id="phone" placeholder="+8613800138000" value="{{ defaults.phone }}" autocomplete="off">
+      </div>
+      <div class="field">
+        <label for="botToken">BOT_TOKEN</label>
+        <input id="botToken" placeholder="123456789:AAxxxxxxxx" autocomplete="off">
+      </div>
+    </div>
+
+    <div class="note">
+      API_ID / API_HASH 在 my.telegram.org 的 API development tools 里申请；
+      BOT_TOKEN 找 @BotFather 创建机器人后获得。
+    </div>
+
+    <div class="row" style="margin-top:14px">
+      <button class="btn primary" id="btnSend" onclick="sendCode()">保存并发送验证码</button>
+      <button class="btn ghost" id="btnSaveBot" onclick="saveBotToken()">只保存机器人 Token</button>
+    </div>
+  </div>
+</div>
+
+<div class="card" id="codeCard" style="display:none">
+  <div class="card-h">第 2 步 · 登录验证码</div>
+  <div class="card-b">
+    <div class="note blue">验证码会发到你 Telegram 的「Telegram」官方会话里，5 分钟内有效。</div>
+    <div class="row" style="margin-top:12px">
+      <input id="code" class="inline-input" style="max-width:220px" placeholder="5 位验证码" autocomplete="off">
+      <button class="btn primary" id="btnVerify" onclick="verifyCode()">验证</button>
+    </div>
+  </div>
+</div>
+
+<div class="card" id="passCard" style="display:none">
+  <div class="card-h">第 3 步 · 两步验证</div>
+  <div class="card-b">
+    <div class="note blue">该账号开启了两步验证（2FA），请输入你的 Telegram 密码。</div>
+    <div class="row" style="margin-top:12px">
+      <input id="twofa" type="password" class="inline-input" style="max-width:260px" placeholder="两步验证密码" autocomplete="off">
+      <button class="btn primary" id="btn2fa" onclick="verifyPassword()">提交</button>
+    </div>
+  </div>
+</div>
+
+<div class="card" id="doneCard" style="display:none">
+  <div class="card-h">已完成</div>
+  <div class="card-b">
+    <div class="note">Telegram 账号已登录，转发链路正在自动启动。</div>
+    <div class="row" style="margin-top:12px">
+      <a class="btn primary" href="/admin/rules">去绑定规则</a>
+      <a class="btn ghost" href="/admin/settings">检查全局设置</a>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let currentState = {{ status.get('status', 'idle') | tojson }};
+
+async function call(url, body) {
+  const options = body === undefined
+    ? { method: 'GET' }
+    : {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      };
+  const resp = await fetch(url, options);
+  let data = {};
+  try { data = await resp.json(); } catch (e) { /* 忽略非 JSON 响应 */ }
+  return data;
+}
+
+function setState(payload) {
+  if (!payload) return;
+  currentState = payload.status || 'idle';
+  const s = payload.status || 'idle';
+
+  const tag = document.getElementById('stateTag');
+  const hint = document.getElementById('stateHint');
+
+  const table = {
+    idle: ['未配置', '填写下面的凭据并发送验证码。'],
+    code_sent: ['等待验证码', '验证码已发送，请在下面的输入框里填写。'],
+    need_password: ['等待两步验证', '该账号开启了 2FA，请继续输入密码。'],
+    authorized: ['已登录', 'Telegram 账号已登录，转发链路会自动启动。'],
+    error: ['出错', payload.error || '未知错误'],
+  };
+  const entry = table[s] || table.idle;
+
+  tag.textContent = entry[0];
+  tag.className = 'tag ' + (s === 'authorized' ? 'ok' : s === 'error' ? 'warn' : '');
+  hint.textContent = s === 'error' ? (payload.error || entry[1]) : entry[1];
+
+  document.getElementById('codeCard').style.display = (s === 'code_sent') ? '' : 'none';
+  document.getElementById('passCard').style.display = (s === 'need_password') ? '' : 'none';
+  document.getElementById('doneCard').style.display = (s === 'authorized') ? '' : 'none';
+  document.getElementById('credCard').style.display = (s === 'authorized') ? 'none' : '';
+
+  if (payload.user_id) {
+    hint.textContent = entry[1] + ' 用户 ID：' + payload.user_id;
+  }
+}
+
+async function sendCode() {
+  const api_id = document.getElementById('apiId').value.trim();
+  const api_hash = document.getElementById('apiHash').value.trim();
+  const phone = document.getElementById('phone').value.trim();
+
+  if (!api_id || !api_hash || !phone) {
+    toast('API_ID、API_HASH、手机号都要填', 'err');
+    return;
+  }
+
+  const btn = document.getElementById('btnSend');
+  btn.disabled = true;
+  btn.textContent = '发送中…';
+  try {
+    // 顺手保存机器人 Token（填了才存），免得用户还要单独点一次
+    const botToken = document.getElementById('botToken').value.trim();
+    if (botToken) {
+      await call('/admin/api/setup/config', { values: { BOT_TOKEN: botToken } });
+    }
+    const r = await call('/admin/api/setup/send-code', { api_id, api_hash, phone });
+    if (r.ok) {
+      toast('验证码已发送');
+    } else {
+      toast(r.error || '发送失败', 'err');
+    }
+    setState(r);
+  } catch (e) {
+    toast('请求失败：' + e, 'err');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '保存并发送验证码';
+  }
+}
+
+async function saveBotToken() {
+  const bot_token = document.getElementById('botToken').value.trim();
+  if (!bot_token) {
+    toast('先填 BOT_TOKEN', 'err');
+    return;
+  }
+  const r = await call('/admin/api/setup/config', { values: { BOT_TOKEN: bot_token } });
+  if (r.ok) {
+    toast('机器人 Token 已保存');
+  } else {
+    const first = Array.isArray(r.errors) ? r.errors[0] : (r.errors ? Object.values(r.errors)[0] : r.error);
+    toast(first || '保存失败', 'err');
+  }
+}
+
+async function verifyCode() {
+  const code = document.getElementById('code').value.trim();
+  if (!code) {
+    toast('请输入验证码', 'err');
+    return;
+  }
+  const btn = document.getElementById('btnVerify');
+  btn.disabled = true;
+  btn.textContent = '验证中…';
+  try {
+    const r = await call('/admin/api/setup/verify-code', { code });
+    if (!r.ok) {
+      toast(r.error || '验证失败', 'err');
+    } else if (r.status === 'need_password') {
+      toast('还需要两步验证密码');
+    } else {
+      toast('登录成功');
+    }
+    setState(r);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '验证';
+  }
+}
+
+async function verifyPassword() {
+  const password = document.getElementById('twofa').value;
+  if (!password) {
+    toast('请输入两步验证密码', 'err');
+    return;
+  }
+  const btn = document.getElementById('btn2fa');
+  btn.disabled = true;
+  btn.textContent = '提交中…';
+  try {
+    const r = await call('/admin/api/setup/verify-password', { password });
+    if (r.ok) {
+      toast('登录成功');
+    } else {
+      toast(r.error || '验证失败', 'err');
+    }
+    setState(r);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '提交';
+  }
+}
+
+// 首次渲染 + 轮询：主进程可能在其他地方完成了登录
+setState({{ status | tojson }});
+setInterval(async () => {
+  if (currentState === 'authorized') return;
+  try {
+    const s = await call('/admin/api/setup/status');
+    if (s && s.ok) setState(s);
+  } catch (e) { /* 忽略轮询失败 */ }
+}, 3000);
+</script>
+{% endblock %}

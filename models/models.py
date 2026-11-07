@@ -1,7 +1,8 @@
-from sqlalchemy import create_engine, Column, Integer, String, Boolean, ForeignKey, Enum, UniqueConstraint, inspect, text, Date
+from sqlalchemy import create_engine, Column, Integer, String, Boolean, ForeignKey, Enum, UniqueConstraint, inspect, text, Date, DateTime
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship, sessionmaker
 from enums.enums import ForwardMode, PreviewMode, MessageMode, AddMode, HandleMode
+from datetime import datetime
 import logging
 import os
 from dotenv import load_dotenv
@@ -474,6 +475,23 @@ class ForwardStat(Base):
     __table_args__ = (
         UniqueConstraint('day', 'rule_id', name='unique_day_rule_stat'),
     )
+
+
+class AppSetting(Base):
+    """键值配置表：替代 .env，由 WebUI 读写。
+
+    启动时 `utils.bootstrap` 用标准库 sqlite3 直连本表，把值注入 `os.environ`，
+    之后 `utils/constants.py` 等模块照常 `os.getenv` 即可读到数据库配置，
+    不需要改动任何存量读取点。
+
+    value 存字符串原样（布尔存 'true'/'false'，整数存十进制文本），
+    由 `utils/app_config.py` 负责类型转换与校验。
+    """
+    __tablename__ = 'app_settings'
+
+    key = Column(String(64), primary_key=True)
+    value = Column(String, nullable=True)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
 def record_forward_stat(session, rule_id: int, success: bool) -> None:

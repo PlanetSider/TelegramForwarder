@@ -29,6 +29,10 @@ COPY . .
 
 # 设置环境变量
 ENV PYTHONUNBUFFERED=1
+ENV TZ=Asia/Shanghai
+
+# 控制台（Web UI）监听端口，由 docker-compose 映射到宿主机
+EXPOSE 8000
 
 # 启动命令
 CMD ["python", "main.py"]

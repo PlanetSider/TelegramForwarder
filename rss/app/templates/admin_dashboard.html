@@ -78,15 +78,15 @@
     <div class="card-b">
       <div class="grid g2">
         <div>
-          <div style="font-size:12px;color:#6b7684">RSS 服务</div>
+          <div style="font-size:12px;color:#6b6b6b">RSS 服务</div>
           <div style="margin-top:5px"><span class="tag ok">● 运行中</span></div>
         </div>
         <div>
-          <div style="font-size:12px;color:#6b7684">数据库</div>
+          <div style="font-size:12px;color:#6b6b6b">数据库</div>
           <div style="margin-top:5px"><span class="tag ok">● 已连接</span></div>
         </div>
         <div>
-          <div style="font-size:12px;color:#6b7684">Telegram 用户账号</div>
+          <div style="font-size:12px;color:#6b6b6b">Telegram 用户账号</div>
           <div style="margin-top:5px">
             {% if telegram and telegram.telegram.user_connected %}<span class="tag ok">● 在线</span>
             {% elif telegram %}
@@ -98,7 +98,7 @@
           </div>
         </div>
         <div>
-          <div style="font-size:12px;color:#6b7684">Telegram 机器人</div>
+          <div style="font-size:12px;color:#6b6b6b">Telegram 机器人</div>
           <div style="margin-top:5px">
             {% if telegram and telegram.telegram.bot_connected %}
               <span class="tag ok">● 在线</span>
@@ -113,7 +113,7 @@
           </div>
         </div>
         <div>
-          <div style="font-size:12px;color:#6b7684">飞书应用机器人</div>
+          <div style="font-size:12px;color:#6b6b6b">飞书应用机器人</div>
           <div style="margin-top:5px">
             {% set fs = telegram.feishu if telegram else None %}
             {% if not fs %}
@@ -134,7 +134,7 @@
         {% for brand, label in [('feishu', '飞书群机器人'), ('lark', 'Lark 群机器人')] %}
         {% set items = channel_groups.get(brand) or [] %}
         <div style="margin-top:10px">
-          <div style="font-size:12px;color:#6b7684">{{ label }}
+          <div style="font-size:12px;color:#6b6b6b">{{ label }}
             {% if items|length > 1 %}<span class="hint">共 {{ items|length }} 个</span>{% endif %}
           </div>
           {% if items|length == 0 %}
@@ -182,15 +182,15 @@
   <div class="card-b">
     <div class="grid g3">
       <div>
-        <div style="font-size:12px;color:#6b7684">机器人转发</div>
+        <div style="font-size:12px;color:#6b6b6b">机器人转发</div>
         <div style="font-size:20px;font-weight:600;margin-top:4px">{{ overview.bot_mode }}</div>
       </div>
       <div>
-        <div style="font-size:12px;color:#6b7684">用户账号转发</div>
+        <div style="font-size:12px;color:#6b6b6b">用户账号转发</div>
         <div style="font-size:20px;font-weight:600;margin-top:4px">{{ overview.user_mode }}</div>
       </div>
       <div>
-        <div style="font-size:12px;color:#6b7684">仅推送（不转发）</div>
+        <div style="font-size:12px;color:#6b6b6b">仅推送（不转发）</div>
         <div style="font-size:20px;font-weight:600;margin-top:4px">{{ overview.push_enabled }}</div>
       </div>
     </div>

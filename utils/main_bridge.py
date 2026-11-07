@@ -128,12 +128,30 @@ async def _handle_dialogs(request: web.Request) -> web.Response:
     items = []
     try:
         async for dialog in user_client.iter_dialogs(limit=limit):
+            entity = getattr(dialog, "entity", None)
+            is_user = bool(getattr(dialog, "is_user", False))
+            is_bot = bool(is_user and getattr(entity, "bot", False))
+            is_channel = bool(getattr(dialog, "is_channel", False))
+            is_group = bool(getattr(dialog, "is_group", False))
+            if is_bot:
+                kind = "bot"
+            elif is_channel:
+                kind = "channel"
+            elif is_group:
+                kind = "group"
+            elif is_user:
+                kind = "private"
+            else:
+                kind = "other"
             items.append({
                 "id": dialog.id,
                 "name": dialog.name or "未命名",
-                "is_channel": bool(getattr(dialog, "is_channel", False)),
-                "is_group": bool(getattr(dialog, "is_group", False)),
-                "is_user": bool(getattr(dialog, "is_user", False)),
+                "username": getattr(entity, "username", None),
+                "is_channel": is_channel,
+                "is_group": is_group,
+                "is_user": is_user,
+                "is_bot": is_bot,
+                "kind": kind,
             })
     except Exception as exc:
         logger.warning("拉取会话列表失败: %s", exc)

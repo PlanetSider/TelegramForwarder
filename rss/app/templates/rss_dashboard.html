@@ -21,7 +21,7 @@
         }
 
         .card {
-            border: 1px solid #e6ebf2;
+            border: 1px solid #e0e0e0;
             border-radius: 12px;
             box-shadow: 0 2px 10px rgba(16,24,40,0.05);
             background: #fff;
@@ -52,27 +52,27 @@
         }
 
         .btn-primary {
-            background: #2AABEE;
+            background: #f6821f;
             border: none;
         }
 
         .btn-primary:hover {
             transform: translateY(-1px);
             box-shadow: 0 6px 14px rgba(42,171,238,0.28);
-            background: #1c9ad6;
+            background: #e0730f;
         }
 
         .form-control, .form-select {
             border-radius: 9px;
             padding: 10px 12px;
-            border: 1px solid #dbe2ea;
+            border: 1px solid #d9d9d9;
             transition: border-color .15s, box-shadow .15s;
             background-color: #fff;
         }
 
         .form-control:focus, .form-select:focus {
-            border-color: #2AABEE;
-            box-shadow: 0 0 0 3px rgba(42,171,238,0.14);
+            border-color: #f6821f;
+            box-shadow: 0 0 0 3px rgba(0,81,195,0.12);
             background-color: #ffffff;
         }
 
@@ -536,6 +536,50 @@
         #apply_regex_btn {
             margin-top: 10px;
         }
+        /* ---- Cloudflare 风格覆盖：与控制台保持同一套视觉 ---- */
+        body { background: #f7f7f7; color: #313131;
+               font-family: -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif; }
+        .navbar { background: #fff !important; border-bottom: 1px solid #e0e0e0; box-shadow: none;
+                  min-height: 56px; padding-top: 0; padding-bottom: 0; }
+        .navbar .navbar-brand, .navbar .nav-link, .navbar .navbar-text { color: #313131 !important; }
+        .navbar .navbar-brand { font-weight: 600; }
+        .navbar .nav-link:hover { color: #c76a10 !important; }
+        .container h2 { font-size: 21px; font-weight: 650; letter-spacing: .2px; }
+        .card, .modal-content { background: #fff; border: 1px solid #e0e0e0; border-radius: 4px;
+                                box-shadow: 0 1px 2px rgba(0,0,0,.04); animation: none; opacity: 1; }
+        .card-body { padding: 16px 18px; }
+        .btn { border-radius: 4px; font-size: 13px; padding: 7px 13px; border-color: #d9d9d9; }
+        .btn-primary, .btn-create { background: #f6821f; border-color: #f6821f; color: #fff; font-weight: 500; }
+        .btn-primary:hover, .btn-create:hover { background: #e0730f; border-color: #e0730f; }
+        .btn-success { background: #1a8c4a; border-color: #1a8c4a; }
+        .btn-success:hover { background: #157038; border-color: #157038; }
+        .btn-warning { background: #f6821f; border-color: #f6821f; color: #fff; }
+        .btn-warning:hover { background: #e0730f; border-color: #e0730f; color: #fff; }
+        .btn-danger { background: #c0392b; border-color: #c0392b; }
+        .btn-danger:hover { background: #a02c20; border-color: #a02c20; }
+        .form-control, .form-select { border: 1px solid #d9d9d9; border-radius: 4px; font-size: 13px; padding: 8px 11px; }
+        .form-control:focus, .form-select:focus { border-color: #0051c3; box-shadow: 0 0 0 3px rgba(0,81,195,.12); }
+        .form-label { font-size: 12.5px; font-weight: 500; color: #3b3b3b; }
+        .table thead th { background: #fafafa; color: #6b6b6b; font-size: 11.5px; font-weight: 600;
+                          border-bottom: 1px solid #ededed; }
+        .table td { border-bottom: 1px solid #ededed; font-size: 13px; }
+        .table tbody tr:hover { background: #fafafa; }
+        .badge { border-radius: 3px; font-weight: 500; font-size: 11.5px; }
+        .badge.bg-success { background: #e7f6ec !important; color: #0f6c39 !important; }
+        .badge.bg-secondary { background: #f0f0f0 !important; color: #5a5a5a !important; }
+        .alert { border-radius: 4px; font-size: 12.5px; }
+        .nav-tabs { border-bottom: 1px solid #e0e0e0; }
+        .nav-tabs .nav-link { color: #6b6b6b; border: 0; border-bottom: 2px solid transparent;
+                              border-radius: 0; font-size: 13px; }
+        .nav-tabs .nav-link:hover { color: #313131; }
+        .nav-tabs .nav-link.active { color: #c76a10; border-bottom-color: #f6821f;
+                                     background: transparent; font-weight: 600; }
+        .form-check-input:checked { background-color: #f6821f; border-color: #f6821f; }
+        .modal-header, .modal-footer { border-color: #ededed; }
+        .modal-title { font-size: 16px; font-weight: 600; }
+        .rss-link-text { color: #0051c3; }
+        #regexTestArea .card, #regexTestArea .card-body { border-radius: 4px; }
+
     </style>
 </head>
 <body>

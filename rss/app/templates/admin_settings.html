@@ -33,13 +33,13 @@
 
         {% if item.kind == 'bool' %}
         <select id="cfg-{{ item.key }}" data-key="{{ item.key }}" data-secret="0"
-                style="width:100%;padding:9px 10px;border:1px solid #dbe2ea;border-radius:8px;background:#fff">
+                style="width:100%;padding:9px 10px;border:1px solid #d9d9d9;border-radius:8px;background:#fff">
           <option value="true" {% if (row.get('display') or '')|lower == 'true' %}selected{% endif %}>开启</option>
           <option value="false" {% if (row.get('display') or '')|lower != 'true' %}selected{% endif %}>关闭</option>
         </select>
         {% elif item.kind == 'select' %}
         <select id="cfg-{{ item.key }}" data-key="{{ item.key }}" data-secret="0"
-                style="width:100%;padding:9px 10px;border:1px solid #dbe2ea;border-radius:8px;background:#fff">
+                style="width:100%;padding:9px 10px;border:1px solid #d9d9d9;border-radius:8px;background:#fff">
           {% for value, text in item.options %}
           <option value="{{ value }}" {% if (row.get('display') or '') == value %}selected{% endif %}>{{ text }}</option>
           {% endfor %}
@@ -48,26 +48,26 @@
         <div style="display:flex;gap:8px">
           <input id="cfg-{{ item.key }}" data-key="{{ item.key }}" data-secret="0" type="text"
                  value="{{ row.get('display') or '' }}" placeholder="点右侧按钮获取，或直接手填模型 ID"
-                 style="flex:1;box-sizing:border-box;padding:9px 10px;border:1px solid #dbe2ea;border-radius:8px">
+                 style="flex:1;box-sizing:border-box;padding:9px 10px;border:1px solid #d9d9d9;border-radius:8px">
           <button type="button" class="btn ghost" onclick="fetchModels()" style="white-space:nowrap">获取模型</button>
         </div>
         <select id="modelPicker"
-                style="display:none;width:100%;margin-top:8px;padding:9px 10px;border:1px solid #dbe2ea;border-radius:8px;background:#fff">
+                style="display:none;width:100%;margin-top:8px;padding:9px 10px;border:1px solid #d9d9d9;border-radius:8px;background:#fff">
         </select>
         {% elif item.secret %}
         <input id="cfg-{{ item.key }}" data-key="{{ item.key }}" data-secret="1"
                type="password" value="" autocomplete="off"
                placeholder="{{ row.get('display') or '未设置' }}"
-               style="width:100%;box-sizing:border-box;padding:9px 10px;border:1px solid #dbe2ea;border-radius:8px">
+               style="width:100%;box-sizing:border-box;padding:9px 10px;border:1px solid #d9d9d9;border-radius:8px">
         {% else %}
         <input id="cfg-{{ item.key }}" data-key="{{ item.key }}" data-secret="0"
                type="{{ 'number' if item.kind == 'int' else 'text' }}"
                value="{{ row.get('display') or '' }}" autocomplete="off"
                {% if item.kind == 'time' %}placeholder="HH:MM"{% endif %}
-               style="width:100%;box-sizing:border-box;padding:9px 10px;border:1px solid #dbe2ea;border-radius:8px">
+               style="width:100%;box-sizing:border-box;padding:9px 10px;border:1px solid #d9d9d9;border-radius:8px">
         {% endif %}
 
-        <div class="hint" style="margin-top:4px;font-size:12px;color:#6b7684">
+        <div class="hint" style="margin-top:4px;font-size:12px;color:#6b6b6b">
           {{ item.help }}
           <code class="mono" style="opacity:.7">{{ item.key }}</code>
         </div>
@@ -95,7 +95,7 @@
           <button class="btn sm primary" type="button" data-cfg-save="{{ c.name }}">保存</button>
         </div>
         <textarea data-cfg="{{ c.name }}" rows="5" spellcheck="false"
-                  style="width:100%;box-sizing:border-box;padding:10px 12px;border:1px solid #dbe2ea;border-radius:8px;
+                  style="width:100%;box-sizing:border-box;padding:10px 12px;border:1px solid #d9d9d9;border-radius:8px;
                          font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12.5px;line-height:1.6;
                          color:#22303f;background:#fbfcfd;resize:vertical">{{ c.content }}</textarea>
         {% if c.error %}<div class="hint" style="color:#d93025;margin-top:4px">{{ c.error }}</div>{% endif %}

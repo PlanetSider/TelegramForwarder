@@ -37,7 +37,7 @@
 
         {% if item.kind == 'bool' %}
         <select id="cfg-{{ item.key }}" data-key="{{ item.key }}" data-secret="0"
-                style="width:100%;padding:9px 10px;border:1px solid #dbe2ea;border-radius:8px;background:#fff">
+                style="width:100%;padding:9px 10px;border:1px solid #d9d9d9;border-radius:8px;background:#fff">
           <option value="true" {% if (row.get('display') or '')|lower == 'true' %}selected{% endif %}>开启</option>
           <option value="false" {% if (row.get('display') or '')|lower != 'true' %}selected{% endif %}>关闭</option>
         </select>
@@ -45,14 +45,14 @@
         <input id="cfg-{{ item.key }}" data-key="{{ item.key }}" data-secret="1"
                type="password" value="" autocomplete="off"
                placeholder="{{ row.get('display') or '未设置' }}"
-               style="width:100%;box-sizing:border-box;padding:9px 10px;border:1px solid #dbe2ea;border-radius:8px">
+               style="width:100%;box-sizing:border-box;padding:9px 10px;border:1px solid #d9d9d9;border-radius:8px">
         {% else %}
         <input id="cfg-{{ item.key }}" data-key="{{ item.key }}" data-secret="0" type="text"
                value="{{ row.get('display') or '' }}" autocomplete="off"
-               style="width:100%;box-sizing:border-box;padding:9px 10px;border:1px solid #dbe2ea;border-radius:8px">
+               style="width:100%;box-sizing:border-box;padding:9px 10px;border:1px solid #d9d9d9;border-radius:8px">
         {% endif %}
 
-        <div class="hint" style="margin-top:4px;font-size:12px;color:#6b7684">
+        <div class="hint" style="margin-top:4px;font-size:12px;color:#6b6b6b">
           {{ item.help }}
           <code class="mono" style="opacity:.7">{{ item.key }}</code>
         </div>
@@ -78,29 +78,29 @@
     {% if pushes %}
     <table style="width:100%;border-collapse:collapse;font-size:13px">
       <thead>
-        <tr style="text-align:left;color:#6b7684;font-weight:500">
-          <th style="padding:8px 10px;border-bottom:1px solid #eef2f7">规则</th>
-          <th style="padding:8px 10px;border-bottom:1px solid #eef2f7">名称</th>
-          <th style="padding:8px 10px;border-bottom:1px solid #eef2f7">平台</th>
-          <th style="padding:8px 10px;border-bottom:1px solid #eef2f7">Webhook</th>
-          <th style="padding:8px 10px;border-bottom:1px solid #eef2f7">媒体</th>
-          <th style="padding:8px 10px;border-bottom:1px solid #eef2f7">状态</th>
+        <tr style="text-align:left;color:#6b6b6b;font-weight:500">
+          <th style="padding:8px 10px;border-bottom:1px solid #f0f0f0">规则</th>
+          <th style="padding:8px 10px;border-bottom:1px solid #f0f0f0">名称</th>
+          <th style="padding:8px 10px;border-bottom:1px solid #f0f0f0">平台</th>
+          <th style="padding:8px 10px;border-bottom:1px solid #f0f0f0">Webhook</th>
+          <th style="padding:8px 10px;border-bottom:1px solid #f0f0f0">媒体</th>
+          <th style="padding:8px 10px;border-bottom:1px solid #f0f0f0">状态</th>
         </tr>
       </thead>
       <tbody>
         {% for p in pushes %}
         <tr>
-          <td style="padding:9px 10px;border-bottom:1px solid #f4f7fa">
+          <td style="padding:9px 10px;border-bottom:1px solid #fafafa">
             <a href="/admin/rules/{{ p.rule_id }}">{{ p.rule_name }}</a>
           </td>
-          <td style="padding:9px 10px;border-bottom:1px solid #f4f7fa">{{ p.name or '—' }}</td>
-          <td style="padding:9px 10px;border-bottom:1px solid #f4f7fa">
+          <td style="padding:9px 10px;border-bottom:1px solid #fafafa">{{ p.name or '—' }}</td>
+          <td style="padding:9px 10px;border-bottom:1px solid #fafafa">
             <span class="tag {{ 'push' if p.brand == 'feishu' else 'ai' }}">
               {{ '飞书' if p.brand == 'feishu' else 'Lark' }}</span>
           </td>
-          <td class="mono" style="padding:9px 10px;border-bottom:1px solid #f4f7fa;font-size:12px">{{ p.display }}</td>
-          <td style="padding:9px 10px;border-bottom:1px solid #f4f7fa">{{ p.media_mode }}</td>
-          <td style="padding:9px 10px;border-bottom:1px solid #f4f7fa">
+          <td class="mono" style="padding:9px 10px;border-bottom:1px solid #fafafa;font-size:12px">{{ p.display }}</td>
+          <td style="padding:9px 10px;border-bottom:1px solid #fafafa">{{ p.media_mode }}</td>
+          <td style="padding:9px 10px;border-bottom:1px solid #fafafa">
             {% if p.enabled %}<span class="tag ok">启用</span>{% else %}<span class="tag off">停用</span>{% endif %}
           </td>
         </tr>
@@ -123,7 +123,7 @@
       <div><code class="mono">feishu://1234abcd-5678-...?secret=xxxx</code> — 只填令牌，程序自动补全 <span class="mono">open.feishu.cn</span> 前缀</div>
       <div><code class="mono">lark://1234abcd-5678-...?secret=xxxx</code> — 国际版，自动补全 <span class="mono">open.larksuite.com</span></div>
       <div><code class="mono">https://open.feishu.cn/open-apis/bot/v2/hook/令牌?secret=签名密钥</code> — 完整地址</div>
-      <div style="color:#6b7684;margin-top:6px">
+      <div style="color:#6b6b6b;margin-top:6px">
         群机器人开启了「签名校验」时才需要带 <code>?secret=</code>；
         开启了「自定义关键词」的，记得让关键词出现在转发内容里（例如把用户名加进模板）。
       </div>

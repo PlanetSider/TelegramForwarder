@@ -1,0 +1,153 @@
+{% extends "admin_base.html" %}
+{% block title %}对话列表{% endblock %}
+
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>对话列表</h1>
+    <p>用户账号当前可见的会话。点右侧「转发」，选好目标即可建立转发规则。</p>
+  </div>
+  <div class="actions">
+    <button class="btn ghost" onclick="location.reload()">刷新</button>
+  </div>
+</div>
+
+{% if not reachable %}
+<div class="note">
+  主进程未就绪，读不到会话列表。请确认容器正在运行、Telegram 账号已登录（见「概览」的服务状态）。
+</div>
+{% else %}
+
+<div class="tabs" style="margin-bottom:16px">
+  {% for k, label, desc in kinds %}
+  <button class="{{ 'on' if k == kind else '' }}" onclick="location.href='/admin/dialogs/{{ k }}'">
+    {{ label }} <span class="tag off" style="margin-left:6px">{{ counts[k] }}</span>
+  </button>
+  {% endfor %}
+</div>
+
+<div class="card">
+  <div class="card-h">
+    {% for k, label, desc in kinds %}{% if k == kind %}
+    <h3>{{ label }}</h3>
+    <span class="sub">{{ desc }} · 共 {{ items | length }} 个</span>
+    {% endif %}{% endfor %}
+  </div>
+  <div class="card-b" style="padding:0">
+    {% if items %}
+    <table>
+      <thead>
+        <tr>
+          <th style="width:44%">名称</th>
+          <th style="width:20%">会话 ID</th>
+          <th style="width:20%">用户名</th>
+          <th style="width:16%;text-align:right">操作</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for d in items %}
+        <tr>
+          <td style="font-weight:500">{{ d.name }}</td>
+          <td class="mono">{{ d.id }}</td>
+          <td class="mono" style="color:#8c8c8c">
+            {% if d.username %}@{{ d.username }}{% else %}—{% endif %}
+          </td>
+          <td style="text-align:right">
+            <button class="btn primary sm"
+                    onclick='openForward({{ d.id }}, {{ d.name | tojson }})'>转发</button>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="empty">这一类下没有会话</div>
+    {% endif %}
+  </div>
+</div>
+
+<div id="fwdModal" class="hide"
+     style="position:fixed;inset:0;background:rgba(0,0,0,.35);place-items:center;z-index:200">
+  <div class="card" style="width:440px;max-width:92vw">
+    <div class="card-h"><h3>建立转发规则</h3></div>
+    <div class="card-b">
+      <div class="field">
+        <label>来源</label>
+        <div id="fwdSource" class="mono" style="padding:8px 0;color:#313131"></div>
+      </div>
+      <div class="field">
+        <label>转发到</label>
+        <select id="fwdTarget" class="inline-input" style="width:100%"></select>
+        <div class="hint">目标可以是群、频道，也可以是机器人会话（用于通知）</div>
+      </div>
+      <div class="row" style="justify-content:flex-end;gap:8px">
+        <button class="btn ghost" onclick="closeForward()">取消</button>
+        <button class="btn primary" id="fwdOk" onclick="doForward()">建立规则</button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+const ALL_DIALOGS = {{ all_items | tojson }};
+let pendingSource = null;
+
+function openForward(id, name) {
+  pendingSource = id;
+  document.getElementById('fwdSource').textContent = name + '（' + id + '）';
+
+  const sel = document.getElementById('fwdTarget');
+  sel.innerHTML = '';
+  ALL_DIALOGS.forEach(function (d) {
+    if (d.id === id) return;
+    const opt = document.createElement('option');
+    opt.value = String(d.id);
+    opt.textContent = d.name + ' · ' + d.kind;
+    sel.appendChild(opt);
+  });
+
+  document.getElementById('fwdModal').classList.remove('hide');
+  document.getElementById('fwdModal').style.display = 'grid';
+}
+
+function closeForward() {
+  const modal = document.getElementById('fwdModal');
+  modal.classList.add('hide');
+  modal.style.display = 'none';
+  pendingSource = null;
+}
+
+async function doForward() {
+  if (pendingSource === null) return;
+  const target = document.getElementById('fwdTarget').value;
+  if (!target) { toast('请选择目标会话', 'err'); return; }
+
+  const btn = document.getElementById('fwdOk');
+  btn.disabled = true;
+  btn.textContent = '创建中…';
+  try {
+    const r = await window.api('POST', '/admin/api/rules', {
+      source: String(pendingSource),
+      target: String(target),
+    });
+    if (r && r.ok) {
+      toast('规则已建立，正在打开…');
+      const ruleId = r.rule_id || (r.rule && r.rule.id);
+      setTimeout(function () {
+        location.href = ruleId ? '/admin/rules/' + ruleId : '/admin/rules';
+      }, 500);
+    } else {
+      toast((r && r.error) || '建立失败', 'err');
+    }
+  } catch (e) {
+    toast('请求失败：' + e, 'err');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '建立规则';
+  }
+}
+</script>
+{% endblock %}

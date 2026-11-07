@@ -189,6 +189,36 @@ async def admin_settings(request: Request, group: str, user=Depends(get_current_
     )
 
 
+DIALOG_KINDS = [
+    ("group", "群组", "超级群与普通群"),
+    ("channel", "频道", "订阅频道"),
+    ("bot", "通知机器人", "机器人会话"),
+]
+
+
+@router.get("/dialogs")
+async def admin_dialogs_root(user=Depends(get_current_user)):
+    return RedirectResponse(url="/admin/dialogs/group", status_code=302)
+
+
+@router.get("/dialogs/{kind}")
+async def admin_dialogs(request: Request, kind: str, user=Depends(get_current_user)):
+    valid = {k for k, _, _ in DIALOG_KINDS}
+    if kind not in valid:
+        return RedirectResponse(url="/admin/dialogs/group", status_code=302)
+
+    data = await bridge_client.get_dialogs() or {}
+    all_items = data.get("items") or []
+    items = [d for d in all_items if d.get("kind") == kind]
+    counts = {k: sum(1 for d in all_items if d.get("kind") == k) for k in valid}
+
+    return templates.TemplateResponse("admin_dialogs.html", _ctx(
+        request, user, "dialogs",
+        kind=kind, kinds=DIALOG_KINDS, items=items, counts=counts,
+        reachable=bool(data), all_items=all_items,
+    ))
+
+
 @router.get("/feishu", response_class=HTMLResponse)
 async def admin_feishu(request: Request, user=Depends(get_current_user)):
     """飞书设置：应用机器人（命令控制）+ 群机器人推送总览。"""

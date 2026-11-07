@@ -35,11 +35,16 @@ def _login_redirect():
 
 def _ctx(request: Request, user, active: str, **extra):
     """统一模板上下文。"""
+    from utils import app_config
+
     data = {
         "request": request,
         "user": user,
         "active": active,
         "project_name": "TG Forwarder",
+        # 侧边栏「全局设置」下的二级菜单，所有页面都要有
+        "settings_groups": [(gid, title) for gid, title, _ in app_config.GROUPS],
+        "settings_group": "",
     }
     data.update(extra)
     return data
@@ -116,44 +121,88 @@ async def admin_rule_detail(request: Request, rule_id: int,
 
 
 @router.get("/settings", response_class=HTMLResponse)
-async def admin_settings(request: Request, user=Depends(get_current_user)):
-    """全局设置：读写 app_settings 表里的全部配置项。"""
+async def admin_settings_root(user=Depends(get_current_user)):
+    """全局设置：默认进入第一个分组，避免把所有配置堆在一屏。"""
+    if not user:
+        return _login_redirect()
+
+    from utils import app_config
+    return RedirectResponse(url=f"/admin/settings/{app_config.GROUPS[0][0]}", status_code=302)
+
+
+@router.get("/settings/{group}", response_class=HTMLResponse)
+async def admin_settings(request: Request, group: str, user=Depends(get_current_user)):
+    """全局设置：一个分组一页。"""
     if not user:
         return _login_redirect()
 
     from utils import app_config
     from utils import settings as settings_loader
 
+    entries = app_config.grouped()
+    current = next((entry for entry in entries if entry[0] == group), None)
+    if current is None:
+        return RedirectResponse(url=f"/admin/settings/{app_config.GROUPS[0][0]}", status_code=302)
+
     session = get_session()
     try:
-        groups = app_config.grouped()
         rows = app_config.as_display(session)
     finally:
         session.close()
 
-    # 模板按 key 取展示值：敏感项在这里已经打码，真实值不会进 HTML
-    view = {row["key"]: row for row in rows}
+    # 只把当前分组的展示行交给模板：敏感项已打码，真实值不会进 HTML
+    view = {row["key"]: row for row in rows if row.get("group") == group}
 
-    try:
-        ai_models = settings_loader.load_ai_models(type="dict")
-    except Exception as exc:
-        logger.warning("加载 AI 模型配置失败: %s", exc)
-        ai_models = {}
+    ai_models = {}
+    if group == "ai":
+        try:
+            ai_models = settings_loader.load_ai_models(type="dict")
+        except Exception as exc:
+            logger.warning("加载 AI 模型配置失败: %s", exc)
 
-    from rss.app.services import config_service
-    try:
-        configs = config_service.list_configs()
-    except Exception as exc:
-        logger.warning("读取配置文件失败: %s", exc)
-        configs = []
+    configs = []
+    if group in ("ai", "storage"):
+        from rss.app.services import config_service
+        try:
+            configs = config_service.list_configs()
+        except Exception as exc:
+            logger.warning("读取配置文件失败: %s", exc)
 
     return templates.TemplateResponse(
         "admin_settings.html",
         _ctx(request, user, "settings",
-             groups=groups,
+             settings_group=group,
+             groups=entries,
+             current=current,
              view=view,
              ai_models=ai_models,
              configs=configs),
+    )
+
+
+@router.get("/feishu", response_class=HTMLResponse)
+async def admin_feishu(request: Request, user=Depends(get_current_user)):
+    """飞书设置：应用机器人（命令控制）+ 群机器人推送总览。"""
+    if not user:
+        return _login_redirect()
+
+    from utils import app_config
+
+    entries = app_config.grouped()
+    current = next((entry for entry in entries if entry[0] == "feishu"), None)
+
+    session = get_session()
+    try:
+        rows = app_config.as_display(session)
+        pushes = rule_service.list_feishu_channels(session)
+    finally:
+        session.close()
+
+    view = {row["key"]: row for row in rows if row.get("group") == "feishu"}
+
+    return templates.TemplateResponse(
+        "admin_feishu.html",
+        _ctx(request, user, "feishu", current=current, view=view, pushes=pushes),
     )
 
 

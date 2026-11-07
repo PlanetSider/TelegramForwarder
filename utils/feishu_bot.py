@@ -182,7 +182,7 @@ async def run_feishu_bot() -> None:
         logger.error("未安装 lark-oapi，飞书命令功能不可用（pip install lark-oapi）")
         return
 
-    app_id, app_secret, allowed_users = config
+    app_id, app_secret, _ = config
 
     try:
         channel = FeishuChannel(app_id=app_id, app_secret=app_secret)
@@ -198,10 +198,13 @@ async def run_feishu_bot() -> None:
             if not text.strip():
                 return
 
+            # 白名单实时读取：在控制台「飞书」页保存后立即生效，不必重启
+            _, _, allowed_users = get_feishu_bot_config() or (None, None, set())
+
             if not allowed_users:
                 logger.warning(
                     f"飞书命令未配置白名单，已忽略来自 {sender_id} 的消息；"
-                    f"把你的 open_id 填到 FEISHU_ALLOWED_USERS 即可启用"
+                    f"把你的 open_id 填到 FEISHU_ALLOWED_USERS（或控制台「飞书」页）即可启用"
                 )
                 return
 

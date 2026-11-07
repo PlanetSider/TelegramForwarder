@@ -1,0 +1,177 @@
+{% extends "admin_base.html" %}
+{% block title %}飞书{% endblock %}
+{% block crumb %}配置 / <b>飞书</b>{% endblock %}
+
+{% block content %}
+{% set _, gtitle, gdesc, items = current if current else ('feishu', '飞书', '', []) %}
+<div class="page-head">
+  <div>
+    <h1>飞书</h1>
+    <p>应用机器人负责「收命令」，群机器人负责「推消息」，两者互相独立</p>
+  </div>
+  <div class="actions">
+    <button class="btn primary" id="btnSaveFeishu" onclick="saveFeishu()">保存本页修改</button>
+  </div>
+</div>
+
+<div class="note blue" style="margin-bottom:14px">
+  修改应用 App ID / Secret 后需要重启容器才会重新建立长连接；
+  命令白名单保存后立即生效，无需重启。
+</div>
+
+<div class="card" style="margin-bottom:16px">
+  <div class="card-h">
+    <h3>应用机器人（接收命令）</h3>
+    <span class="sub">开放平台 · 企业自建应用 · 长连接</span>
+  </div>
+  <div class="card-b">
+    <div class="grid g2">
+      {% for item in items %}
+      {% set row = view.get(item.key) or {} %}
+      <div class="field" style="margin-bottom:12px">
+        <label for="cfg-{{ item.key }}">
+          {{ item.label }}
+          {% if item.restart %}<span class="tag warn">需重启</span>{% endif %}
+          {% if row.get('configured') %}<span class="tag ok">已配置</span>{% else %}<span class="tag off">未设置</span>{% endif %}
+        </label>
+
+        {% if item.kind == 'bool' %}
+        <select id="cfg-{{ item.key }}" data-key="{{ item.key }}" data-secret="0"
+                style="width:100%;padding:9px 10px;border:1px solid #dbe2ea;border-radius:8px;background:#fff">
+          <option value="true" {% if (row.get('display') or '')|lower == 'true' %}selected{% endif %}>开启</option>
+          <option value="false" {% if (row.get('display') or '')|lower != 'true' %}selected{% endif %}>关闭</option>
+        </select>
+        {% elif item.secret %}
+        <input id="cfg-{{ item.key }}" data-key="{{ item.key }}" data-secret="1"
+               type="password" value="" autocomplete="off"
+               placeholder="{{ row.get('display') or '未设置' }}"
+               style="width:100%;box-sizing:border-box;padding:9px 10px;border:1px solid #dbe2ea;border-radius:8px">
+        {% else %}
+        <input id="cfg-{{ item.key }}" data-key="{{ item.key }}" data-secret="0" type="text"
+               value="{{ row.get('display') or '' }}" autocomplete="off"
+               style="width:100%;box-sizing:border-box;padding:9px 10px;border:1px solid #dbe2ea;border-radius:8px">
+        {% endif %}
+
+        <div class="hint" style="margin-top:4px;font-size:12px;color:#6b7684">
+          {{ item.help }}
+          <code class="mono" style="opacity:.7">{{ item.key }}</code>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+
+    <div class="note" style="margin-top:6px">
+      <b>接入步骤：</b>① 开放平台创建「企业自建应用」并添加「机器人」能力；
+      ② 权限里勾选 <code>im:message</code>；③ 事件订阅选择「长连接」并订阅
+      <code>im.message.receive_v1</code>；④ 发布应用并加入可用范围；
+      ⑤ 把 App ID / Secret 填到上面并重启容器。
+    </div>
+  </div>
+</div>
+
+<div class="card" style="margin-bottom:16px">
+  <div class="card-h">
+    <h3>群机器人（推送消息）</h3>
+    <span class="sub">按规则配置 · 一条规则可挂多个群</span>
+  </div>
+  <div class="card-b">
+    {% if pushes %}
+    <table style="width:100%;border-collapse:collapse;font-size:13px">
+      <thead>
+        <tr style="text-align:left;color:#6b7684;font-weight:500">
+          <th style="padding:8px 10px;border-bottom:1px solid #eef2f7">规则</th>
+          <th style="padding:8px 10px;border-bottom:1px solid #eef2f7">平台</th>
+          <th style="padding:8px 10px;border-bottom:1px solid #eef2f7">Webhook</th>
+          <th style="padding:8px 10px;border-bottom:1px solid #eef2f7">媒体</th>
+          <th style="padding:8px 10px;border-bottom:1px solid #eef2f7">状态</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for p in pushes %}
+        <tr>
+          <td style="padding:9px 10px;border-bottom:1px solid #f4f7fa">
+            <a href="/admin/rules/{{ p.rule_id }}">{{ p.rule_name }}</a>
+          </td>
+          <td style="padding:9px 10px;border-bottom:1px solid #f4f7fa">
+            <span class="tag {{ 'push' if p.brand == 'feishu' else 'ai' }}">
+              {{ '飞书' if p.brand == 'feishu' else 'Lark' }}</span>
+          </td>
+          <td class="mono" style="padding:9px 10px;border-bottom:1px solid #f4f7fa;font-size:12px">{{ p.display }}</td>
+          <td style="padding:9px 10px;border-bottom:1px solid #f4f7fa">{{ p.media_mode }}</td>
+          <td style="padding:9px 10px;border-bottom:1px solid #f4f7fa">
+            {% if p.enabled %}<span class="tag ok">启用</span>{% else %}<span class="tag off">停用</span>{% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="empty">
+      还没有配置飞书群机器人。到「规则 → 某条规则 → 推送」里添加地址即可，
+      支持 <code class="mono">feishu://机器人令牌?secret=签名密钥</code> 这种简写。
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-h"><h3>地址怎么写</h3><span class="sub">添加推送地址时可用以下任一形式</span></div>
+  <div class="card-b">
+    <div style="line-height:2;font-size:13px">
+      <div><code class="mono">feishu://1234abcd-5678-...?secret=xxxx</code> — 只填令牌，程序自动补全 <span class="mono">open.feishu.cn</span> 前缀</div>
+      <div><code class="mono">lark://1234abcd-5678-...?secret=xxxx</code> — 国际版，自动补全 <span class="mono">open.larksuite.com</span></div>
+      <div><code class="mono">https://open.feishu.cn/open-apis/bot/v2/hook/令牌?secret=签名密钥</code> — 完整地址</div>
+      <div style="color:#6b7684;margin-top:6px">
+        群机器人开启了「签名校验」时才需要带 <code>?secret=</code>；
+        开启了「自定义关键词」的，记得让关键词出现在转发内容里（例如把用户名加进模板）。
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function saveFeishu() {
+  const payload = {};
+  document.querySelectorAll('[data-key]').forEach(function (el) {
+    const key = el.dataset.key;
+    const isSecret = el.dataset.secret === '1';
+    if (isSecret && el.value === '') return;   // 留空 = 不修改
+    payload[key] = el.value;
+  });
+
+  if (Object.keys(payload).length === 0) {
+    toast('没有需要保存的修改', 'err');
+    return;
+  }
+
+  const btn = document.getElementById('btnSaveFeishu');
+  btn.disabled = true;
+  btn.textContent = '保存中…';
+  try {
+    const resp = await fetch('/admin/api/config', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ values: payload }),
+    });
+    let data = {};
+    try { data = await resp.json(); } catch (e) { /* 忽略 */ }
+
+    if (data.ok) {
+      toast('已保存 ' + (data.saved || []).length + ' 项配置');
+      setTimeout(function () { location.reload(); }, 600);
+    } else {
+      const errors = data.errors || [];
+      const first = Array.isArray(errors) ? errors[0] : errors;
+      toast(first || data.error || '保存失败', 'err');
+    }
+  } catch (e) {
+    toast('请求失败：' + e, 'err');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '保存本页修改';
+  }
+}
+</script>
+{% endblock %}

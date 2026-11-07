@@ -542,3 +542,36 @@ def delete_replace(session, replace_id: int) -> None:
         raise LookupError("替换规则不存在")
     session.delete(item)
     session.commit()
+
+
+# ---------------------------------------------------------------- 飞书推送汇总
+
+def list_feishu_channels(session) -> List[Dict[str, Any]]:
+    """汇总所有规则下配置成飞书 / Lark webhook 的推送地址。
+
+    一条规则可以挂多个推送地址（PushConfig 无唯一约束），这里平铺展示，
+    便于在飞书设置页集中看到「哪些规则的哪些群机器人」在被使用。
+    """
+    from utils.feishu import parse_feishu_url
+
+    items: List[Dict[str, Any]] = []
+    for row in session.query(PushConfig).all():
+        target = parse_feishu_url(row.push_channel or "")
+        if not target:
+            continue
+        rule = session.query(ForwardRule).get(row.rule_id)
+        if rule and rule.source_chat and rule.target_chat:
+            rule_name = f"{rule.source_chat.name or rule.source_chat.telegram_chat_id} → " \
+                        f"{rule.target_chat.name or rule.target_chat.telegram_chat_id}"
+        else:
+            rule_name = f"规则 #{row.rule_id}"
+        items.append({
+            "push_id": row.id,
+            "rule_id": row.rule_id,
+            "rule_name": rule_name,
+            "brand": target.brand,
+            "display": target.masked_url,
+            "enabled": bool(row.enable_push_channel),
+            "media_mode": row.media_send_mode or "Single",
+        })
+    return items

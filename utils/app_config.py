@@ -52,6 +52,7 @@ GROUPS: List[Tuple[str, str, str]] = [
     ("timing", "超时与批量", "延时、超时与并发参数"),
     ("storage", "存储路径", "容器内数据与媒体目录"),
     ("external", "外部服务", "反代地址与联动服务"),
+    ("feishu", "飞书", "应用机器人、命令白名单与群推送"),
 ]
 
 _YES_NO = (("true", "开启"), ("false", "关闭"))
@@ -151,6 +152,15 @@ SETTINGS: List[SettingSpec] = [
     SettingSpec("UFB_SERVER_URL", "UFB 服务地址", "external", "text",
                 help="启用 UFB 联动时必填"),
     SettingSpec("UFB_TOKEN", "UFB Token", "external", "password", secret=True),
+
+    # ---------------------------------------------------------------- 飞书
+    SettingSpec("FEISHU_APP_ID", "应用 App ID", "feishu", "text", restart=True,
+                help="开放平台自建应用的 App ID；与 App Secret 一起填写后才启用长连接命令控制"),
+    SettingSpec("FEISHU_APP_SECRET", "应用 App Secret", "feishu", "password", secret=True, restart=True,
+                help="与 App ID 配对，用于建立长连接；保存后需重启容器才会重连"),
+    SettingSpec("FEISHU_ALLOWED_USERS", "命令白名单", "feishu", "text",
+                help="允许下发命令的 open_id，多个用逗号或分号分隔；留空表示拒绝所有命令，"
+                     "第一次可先留空，从容器日志里取到来访者的 open_id 再填回"),
 ]
 
 _BY_KEY: Dict[str, SettingSpec] = {s.key: s for s in SETTINGS}

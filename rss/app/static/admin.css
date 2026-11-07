@@ -37,6 +37,13 @@ input,select,textarea{font:inherit;color:inherit}
 .nav a .ico{width:17px;text-align:center;opacity:.85}
 .nav a .badge{margin-left:auto;font-size:10.5px;padding:1px 6px;border-radius:20px;
               background:#243244;color:#8fa3ba}
+/* 二级菜单：全局设置下的各个分组 */
+.nav-parent{display:flex;align-items:center;gap:10px;padding:9px 11px 3px;font-size:13.5px;color:#8b98a8}
+.nav-parent .ico{width:17px;text-align:center;opacity:.85}
+.nav .nav-sub{display:flex;flex-direction:column;gap:1px;padding:2px 0 4px}
+.nav .nav-sub a{padding:6px 11px 6px 38px;font-size:12.5px;color:#9aa7b6}
+.nav .nav-sub a:hover{background:var(--side-hover);color:#dbe4ee}
+.nav .nav-sub a.on{background:#1d2a3a;color:#fff;box-shadow:inset 2px 0 0 var(--brand)}
 .side-foot{margin-top:auto;padding:14px;border-top:1px solid #1d2532;font-size:11.5px;color:#56616f}
 .side-foot .dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:#31c48d;margin-right:6px}
 

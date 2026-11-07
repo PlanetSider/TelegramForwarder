@@ -92,7 +92,7 @@ async def get_current_user(request: Request):
 @router.get("/login", response_class=HTMLResponse)
 async def login_page(request: Request, user = Depends(get_current_user)):
     if user:
-        return RedirectResponse(url="/", status_code=status.HTTP_302_FOUND)
+        return RedirectResponse(url="/admin", status_code=status.HTTP_302_FOUND)
     
     db_session = get_session()
     try:
@@ -126,7 +126,7 @@ async def login(
             expires_delta=timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
         )
         
-        response = RedirectResponse(url="/", status_code=status.HTTP_302_FOUND)
+        response = RedirectResponse(url="/admin", status_code=status.HTTP_302_FOUND)
         response.set_cookie(
             key="access_token",
             value=access_token,
@@ -193,7 +193,7 @@ async def register(request: Request):
             expires_delta=timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
         )
         
-        response = RedirectResponse(url="/", status_code=status.HTTP_302_FOUND)
+        response = RedirectResponse(url="/admin", status_code=status.HTTP_302_FOUND)
         response.set_cookie(
             key="access_token",
             value=access_token,
@@ -215,8 +215,8 @@ async def index(request: Request, user = Depends(get_current_user)):
     if not user:
         return RedirectResponse(url="/login", status_code=status.HTTP_302_FOUND)
     
-    # 直接重定向到 RSS 仪表盘
-    return RedirectResponse(url="/rss/dashboard", status_code=status.HTTP_302_FOUND)
+    # 登录后的落地页是控制台，RSS 面板作为其中一个入口
+    return RedirectResponse(url="/admin", status_code=status.HTTP_302_FOUND)
 
 @router.post("/rss/change_password")
 async def change_password(

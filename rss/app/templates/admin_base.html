@@ -25,8 +25,15 @@
       <div class="nav-group">配置</div>
       <a href="/admin/setup" class="{{ 'on' if active == 'setup' else '' }}">
         <span class="ico">✧</span>配置向导</a>
-      <a href="/admin/settings" class="{{ 'on' if active == 'settings' else '' }}">
-        <span class="ico">⚙</span>全局设置</a>
+      <div class="nav-parent"><span class="ico">⚙</span>全局设置</div>
+      <div class="nav-sub">
+        {% for gid, gtitle in settings_groups %}
+        <a href="/admin/settings/{{ gid }}"
+           class="{{ 'on' if active == 'settings' and settings_group == gid else '' }}">{{ gtitle }}</a>
+        {% endfor %}
+      </div>
+      <a href="/admin/feishu" class="{{ 'on' if active == 'feishu' else '' }}">
+        <span class="ico">✈</span>飞书</a>
       <div class="nav-group">原有面板</div>
       <a href="/rss/dashboard"><span class="ico">◫</span>RSS 订阅</a>
     </nav>

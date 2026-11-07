@@ -222,17 +222,18 @@ async def admin_dialogs(request: Request, kind: str, user=Depends(get_current_us
     items = [d for d in all_items if d.get("kind") == kind]
     counts = {k: sum(1 for d in all_items if d.get("kind") == k) for k in valid}
 
-    # 弹窗里要能选「飞书 / Lark 机器人」，所以把已保存的应用机器人一并带上
+    # 弹窗里要能选「飞书应用机器人」和「飞书群机器人」，所以把两者一并带上
     session = get_session()
     try:
         bots = feishu_service.bot_rows(session)
+        hooks = feishu_service.webhook_rows(session)
     finally:
         session.close()
 
     return templates.TemplateResponse("admin_dialogs.html", _ctx(
         request, user, "dialogs",
         kind=kind, kinds=DIALOG_KINDS, items=items, counts=counts,
-        reachable=bool(data), all_items=all_items, bots=bots,
+        reachable=bool(data), all_items=all_items, bots=bots, hooks=hooks,
     ))
 
 

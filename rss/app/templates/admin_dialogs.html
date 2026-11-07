@@ -99,6 +99,7 @@
 <script>
 const ALL_DIALOGS = {{ all_items | tojson }};
 const FEISHU_BOTS = {{ bots | tojson }};
+const FEISHU_HOOKS = {{ hooks | tojson }};
 let pendingSource = null;
 
 function hideChatPicker() {
@@ -192,6 +193,18 @@ function openForward(id, name) {
     sel.appendChild(g2);
   }
 
+  if (FEISHU_HOOKS.length) {
+    const g3 = document.createElement('optgroup');
+    g3.label = '飞书群机器人';
+    FEISHU_HOOKS.forEach(function (h) {
+      const opt = document.createElement('option');
+      opt.value = 'hook:' + h.id;
+      opt.textContent = h.label;
+      g3.appendChild(opt);
+    });
+    sel.appendChild(g3);
+  }
+
   hideChatPicker();
   sel.onchange = onTargetChange;
 
@@ -219,6 +232,9 @@ async function doForward() {
     body.target = String(pendingSource); // 只推送到飞书，不转发到别的 TG 会话
     body.feishu_bot_id = Number(target.slice(4));
     body.feishu_chat_id = chatId;
+  } else if (target.indexOf('hook:') === 0) {
+    body.target = String(pendingSource);
+    body.feishu_webhook_id = Number(target.slice(5));
   } else {
     body.target = String(target);
   }

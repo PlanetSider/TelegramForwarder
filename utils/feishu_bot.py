@@ -44,6 +44,36 @@ def get_bot_status() -> Dict[str, Any]:
     """返回应用机器人当前状态，供控制台概览展示。"""
     return dict(_STATUS)
 
+
+def _remember_owner(app_id: str, open_id: str, name: str = "") -> None:
+    """把首个给机器人发消息的人记为创建者。
+
+    「直接发送」需要一个 open_id 才能私聊，早期建的机器人没记过，
+    让用户随便发一句 /help 就能补上。
+    """
+    if not app_id or not open_id:
+        return
+    try:
+        from models.models import FeishuBot
+
+        session = get_session()
+        try:
+            bot = session.query(FeishuBot).filter(FeishuBot.app_id == app_id).first()
+            if bot is None:
+                return
+            if (getattr(bot, "owner_open_id", "") or "").strip():
+                return
+            bot.owner_open_id = open_id
+            if name:
+                bot.owner_name = name[:64]
+            session.commit()
+            logger.info(f"已记录飞书应用机器人创建者: {open_id}")
+        finally:
+            session.close()
+    except Exception as exc:
+        logger.debug(f"记录飞书应用机器人创建者失败: {exc}")
+
+
 # 飞书群聊里 @机器人 会在文本中留下 @_user_1 之类的占位符
 _MENTION_RE = re.compile(r"@_user_\d+")
 
@@ -257,6 +287,11 @@ async def run_feishu_bot() -> None:
         try:
             sender_id = getattr(message, "sender_id", None)
             text = getattr(message, "content_text", "") or ""
+
+            # 顺手记录创建者，让「直接发送」对早期建的机器人也能用
+            if sender_id:
+                _remember_owner(app_id, sender_id,
+                                getattr(message, "sender_name", "") or "")
 
             if not text.strip():
                 return

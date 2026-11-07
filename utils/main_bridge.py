@@ -215,8 +215,9 @@ async def _handle_create_rule(request: web.Request) -> web.Response:
     target_text = (body.get("target") or "").strip()
     feishu_bot_id = body.get("feishu_bot_id")
     feishu_chat_id = (body.get("feishu_chat_id") or "").strip()
-    if feishu_bot_id and not target_text:
-        # 目标选了飞书/Lark 机器人时，Telegram 侧不再转发到别的会话
+    feishu_webhook_id = body.get("feishu_webhook_id")
+    if (feishu_bot_id or feishu_webhook_id) and not target_text:
+        # 目标选了飞书机器人 / 群机器人时，Telegram 侧不再转发到别的会话
         target_text = source_text
     if not source_text or not target_text:
         return _json_error("源与目标都必须填写")
@@ -260,6 +261,9 @@ async def _handle_create_rule(request: web.Request) -> web.Response:
             forward_mode=ForwardMode.WHITELIST if same else ForwardMode.BLACKLIST,
             add_mode=AddMode.WHITELIST if same else AddMode.BLACKLIST,
         )
+        session.add(rule)
+        session.flush()
+
         if feishu_bot_id:
             try:
                 rule.feishu_bot_id = int(feishu_bot_id)
@@ -268,7 +272,22 @@ async def _handle_create_rule(request: web.Request) -> web.Response:
             rule.feishu_chat_id = feishu_chat_id or None
             rule.enable_push = True
             rule.enable_only_push = True
-        session.add(rule)
+        elif feishu_webhook_id:
+            from models.models import FeishuWebhook, PushConfig
+            try:
+                hook_id = int(feishu_webhook_id)
+            except (TypeError, ValueError):
+                return _json_error("群机器人编号无效")
+            hook = session.query(FeishuWebhook).get(hook_id)
+            if hook is None:
+                return _json_error("群机器人不存在", 404)
+            rule.enable_push = True
+            rule.enable_only_push = True
+            session.add(PushConfig(rule_id=rule.id,
+                                   name=hook.name,
+                                   push_channel=hook.webhook_url,
+                                   enable_push_channel=True))
+
         session.commit()
         return web.json_response({"ok": True, "rule_id": rule.id})
     except Exception as exc:

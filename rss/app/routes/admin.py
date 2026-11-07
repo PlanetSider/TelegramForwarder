@@ -200,11 +200,16 @@ DIALOG_KINDS = [
 
 @router.get("/dialogs")
 async def admin_dialogs_root(user=Depends(get_current_user)):
+    if not user:
+        return _login_redirect()
     return RedirectResponse(url="/admin/dialogs/group", status_code=302)
 
 
 @router.get("/dialogs/{kind}")
 async def admin_dialogs(request: Request, kind: str, user=Depends(get_current_user)):
+    if not user:
+        return _login_redirect()
+
     valid = {k for k, _, _ in DIALOG_KINDS}
     if kind not in valid:
         return RedirectResponse(url="/admin/dialogs/group", status_code=302)
@@ -572,6 +577,9 @@ async def admin_api_delete_replace(replace_id: int, user=Depends(get_current_use
 @router.post("/api/ai/models")
 async def admin_api_ai_models(request: Request, user=Depends(get_current_user)):
     """按当前地址与密钥读取可用模型列表（也接受临时传入，便于先测后存）。"""
+    if not user:
+        return _fail("请先登录", 401)
+
     body = await _json_body(request)
     session = get_session()
     try:
@@ -773,6 +781,9 @@ async def admin_api_setup_config(request: Request, user=Depends(get_current_user
 @router.post("/api/feishu/bots")
 async def admin_api_add_feishu_bot(request: Request, user=Depends(get_current_user)):
     """新增一个应用机器人。"""
+    if not user:
+        return _fail("请先登录", 401)
+
     from rss.app.services import feishu_service
 
     body = await _json_body(request)
@@ -797,6 +808,9 @@ async def admin_api_add_feishu_bot(request: Request, user=Depends(get_current_us
 async def admin_api_update_feishu_bot(bot_id: int, request: Request,
                                       user=Depends(get_current_user)):
     """改昵称 / 换密钥 / 启停 / 设为默认。"""
+    if not user:
+        return _fail("请先登录", 401)
+
     from rss.app.services import feishu_service
 
     body = await _json_body(request)
@@ -817,6 +831,9 @@ async def admin_api_update_feishu_bot(bot_id: int, request: Request,
 
 @router.delete("/api/feishu/bots/{bot_id}")
 async def admin_api_delete_feishu_bot(bot_id: int, user=Depends(get_current_user)):
+    if not user:
+        return _fail("请先登录", 401)
+
     from rss.app.services import feishu_service
 
     session = get_session()
@@ -832,6 +849,9 @@ async def admin_api_delete_feishu_bot(bot_id: int, user=Depends(get_current_user
 @router.get("/api/feishu/bots/{bot_id}/chats")
 async def admin_api_feishu_chats(bot_id: int, user=Depends(get_current_user)):
     """列出机器人所在的群，供「对话列表 → 转发」选目标。"""
+    if not user:
+        return _fail("请先登录", 401)
+
     from rss.app.services import feishu_service
     from utils import feishu_app
 

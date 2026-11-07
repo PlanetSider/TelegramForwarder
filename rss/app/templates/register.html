@@ -14,7 +14,7 @@
     <div class="sub">这是首次部署，注册后即为唯一管理员</div>
 
     {% if error %}
-    <div class="note" style="margin-bottom:14px;color:#b3261e;background:#fdecea;border-color:#f9d6d2">{{ error }}</div>
+    <div class="note" style="margin-bottom:14px;color:#c0392b;background:#fdecea;border-color:#fdecea">{{ error }}</div>
     {% endif %}
 
     <form method="post" action="/register">
@@ -63,7 +63,7 @@
     var v2 = pwd2.value;
     var good = passwordOk(v);
     // 已输入但不达标时提示变红
-    hint.style.color = (v && !good) ? '#d93025' : baseColor;
+    hint.style.color = (v && !good) ? '#c0392b' : baseColor;
     btn.disabled = !(good && v === v2);
   }
 

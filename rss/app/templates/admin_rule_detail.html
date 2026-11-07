@@ -12,7 +12,7 @@
     <h1>{{ rule.source.name if rule.source else ('规则 ' ~ rule.id) }}</h1>
     <p>
       {{ rule.source.name if rule.source else '?' }}
-      <span style="color:#9aa6b4">→</span>
+      <span style="color:#8c8c8c">→</span>
       {{ rule.target.name if rule.target else '?' }}
       {% if rule.enable_rule %}<span class="tag ok" style="margin-left:8px">● 启用</span>
       {% else %}<span class="tag off" style="margin-left:8px">○ 停用</span>{% endif %}
@@ -165,7 +165,7 @@
       {% else %}
       <div class="empty">未设置关键字，所有消息都会进入后续过滤器</div>
       {% endif %}
-      <div class="card-b" style="border-top:1px solid #edf1f5">
+      <div class="card-b" style="border-top:1px solid #f0f0f0">
         <div class="toolbar" style="margin:0">
           <input class="input" id="new-kw" style="flex:1" placeholder="关键字或正则表达式">
           <select class="input" id="new-kw-list" style="width:100px">
@@ -199,7 +199,7 @@
       {% else %}
       <div class="empty">没有替换规则。正则 `.*` 会终止后续替换。</div>
       {% endif %}
-      <div class="card-b" style="border-top:1px solid #edf1f5">
+      <div class="card-b" style="border-top:1px solid #f0f0f0">
         <div class="toolbar" style="margin:0">
           <input class="input" id="new-rp-pattern" style="flex:1" placeholder="匹配式（正则）">
           <input class="input" id="new-rp-content" style="flex:1" placeholder="替换为（可空）">
@@ -375,7 +375,7 @@
     <div class="card-b"><div class="empty">还没有配置推送地址</div></div>
     {% endif %}
 
-    <div class="card-b" style="border-top:1px solid #edf1f5">
+    <div class="card-b" style="border-top:1px solid #f0f0f0">
       <div class="toolbar" style="margin:0">
         <input class="input" id="new-push-name" style="width:150px" placeholder="名称（可选）">
         <input class="input" id="new-push-url" style="flex:1"
@@ -460,7 +460,7 @@
   </div>
   {% else %}
   <div class="card"><div class="empty">
-    这条规则还没有 RSS 配置。去 <a href="/rss/dashboard" style="color:#0b7bbf">RSS 面板</a> 为它创建订阅源。
+    这条规则还没有 RSS 配置。去 <a href="/rss/dashboard" style="color:#0051c3">RSS 面板</a> 为它创建订阅源。
   </div></div>
   {% endif %}
 </div>

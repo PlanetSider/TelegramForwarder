@@ -18,7 +18,7 @@
   <div class="card kpi">
     <div class="label">启用中的规则</div>
     <div class="val">{{ overview.enabled }}
-      <span style="font-size:14px;color:#8b97a6;font-weight:400">/ {{ overview.total }}</span></div>
+      <span style="font-size:14px;color:#8c8c8c;font-weight:400">/ {{ overview.total }}</span></div>
     <div class="delta">{{ overview.disabled }} 条已停用</div>
   </div>
   <div class="card kpi">
@@ -28,7 +28,7 @@
   </div>
   <div class="card kpi">
     <div class="label">今日失败</div>
-    <div class="val" style="color:{{ '#d93025' if overview.today_fail else 'inherit' }}">{{ overview.today_fail }}</div>
+    <div class="val" style="color:{{ '#c0392b' if overview.today_fail else 'inherit' }}">{{ overview.today_fail }}</div>
     <div class="delta">过滤链中断或发送异常</div>
   </div>
   <div class="card kpi">
@@ -69,7 +69,7 @@
       </tbody>
     </table>
     {% else %}
-    <div class="empty">还没有创建任何规则，去 <a href="/admin/rules" style="color:#0b7bbf">规则页</a> 看看</div>
+    <div class="empty">还没有创建任何规则，去 <a href="/admin/rules" style="color:#0051c3">规则页</a> 看看</div>
     {% endif %}
   </div>
 

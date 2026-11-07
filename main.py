@@ -32,6 +32,7 @@ from scheduler.chat_updater import ChatUpdater
 from handlers.bot_handler import send_welcome_message
 from rss.main import app as rss_app
 from utils.log_config import setup_logging
+from utils.constants import WEB_HOST, WEB_PORT
 from utils.feishu_bot import run_feishu_bot
 from utils.main_bridge import ensure_token, start_bridge
 from utils import app_config
@@ -95,11 +96,12 @@ def start_webui():
     """启动控制台子进程。
 
     控制台是**无条件启动**的：首次部署时数据库里还没有任何凭据，
-    正是通过它来完成配置。端口固定由容器映射（compose: 9804 -> 8000）。
+    正是通过它来完成配置。控制台与 RSS 面板是同一个服务、同一个端口，
+    宿主侧端口由 compose 映射（默认 9804 -> 8000）。
     """
     global rss_process
-    host = os.getenv('RSS_HOST', '0.0.0.0')
-    port = int(os.getenv('RSS_PORT', '8000'))
+    host = WEB_HOST
+    port = int(WEB_PORT)
     rss_process = multiprocessing.Process(
         target=run_rss_server,
         args=(host, port),

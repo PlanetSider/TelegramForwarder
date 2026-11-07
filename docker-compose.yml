@@ -22,9 +22,11 @@ services:
     container_name: telegram-forwarder
     restart: unless-stopped
 
-    # 控制台端口：宿主机 9804 → 容器 8000
-    # 容器内固定监听 0.0.0.0:8000（见 Dockerfile 的 EXPOSE），无需其它配置
-    # 只想本机访问可改成 "127.0.0.1:9804:8000"
+    # Web 服务端口：宿主机 9804 → 容器 8000
+    # 控制台（/admin）和 RSS 面板（/rss）是同一个 FastAPI 服务，共用这一个端口，
+    # 不存在单独的「RSS 端口」或「控制台端口」。容器内固定监听 0.0.0.0:8000
+    # （见 Dockerfile 的 EXPOSE）。只想本机访问可改成 "127.0.0.1:9804:8000"；
+    # 换对外端口只改冒号左边，例如 "80:8000"。
     ports:
       - "9804:8000"
 

@@ -17,8 +17,14 @@ def env_bool(name: str, default: bool = False) -> bool:
 BASE_DIR = Path(__file__).parent.parent
 TEMP_DIR = os.path.join(BASE_DIR, 'temp')
 
-RSS_HOST = os.getenv('RSS_HOST', '0.0.0.0')
-RSS_PORT = os.getenv('RSS_PORT', '8000')
+# 控制台（WebUI）和 RSS 面板是同一个 FastAPI 服务、同一个端口：
+# /admin（控制台）、/rss（面板）、/rss/feed（订阅输出）挂在同一个 app 上。
+# 这两个常量历史上叫 RSS_HOST / RSS_PORT（因为最初只有 RSS 面板），
+# 现在统一用 WEB_* 表达真实含义，RSS_* 保留为别名，避免改动大量既有引用。
+WEB_HOST = os.getenv('WEB_HOST') or os.getenv('RSS_HOST') or '0.0.0.0'
+WEB_PORT = os.getenv('WEB_PORT') or os.getenv('RSS_PORT') or '8000'
+RSS_HOST = WEB_HOST
+RSS_PORT = WEB_PORT
 
 # RSS基础URL，如果未设置，则使用请求的URL
 RSS_BASE_URL = os.environ.get('RSS_BASE_URL', None)

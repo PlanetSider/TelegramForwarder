@@ -65,6 +65,7 @@ TELEGRAM_STATUS = {
 
 # 上一次打印过的缺失项，避免重试循环里每 5 秒刷一条同样的日志
 _LAST_MISSING = []
+_LAST_UNAUTHORIZED = False
 
 # 客户端在拿到凭据之后才构造，模块级先占位：
 # utils/common.get_user_client() 依赖 main 模块上的这两个名字存在。
@@ -138,6 +139,9 @@ async def user_session_authorized() -> bool:
     直接调用 ``client.start(phone=...)`` 在未授权时会阻塞等待终端输入验证码，
     在容器里就是一个永不返回的挂起。先检查，避免这种情况。
     """
+    if not os.path.exists(os.path.join('./sessions', 'user.session')):
+        # 没有会话文件，必然未授权；不建连接，避免每轮都去连 Telegram
+        return False
     try:
         probe = TelegramClient('./sessions/user', int(os.getenv('API_ID')), os.getenv('API_HASH'))
     except (TypeError, ValueError):
@@ -185,9 +189,14 @@ async def start_telegram() -> bool:
     authorized = await user_session_authorized()
     TELEGRAM_STATUS["authorized"] = authorized
     if not authorized:
+        global _LAST_UNAUTHORIZED
+
         TELEGRAM_STATUS["error"] = "用户会话未授权，请在控制台完成验证码登录"
-        logger.info("Telegram 用户会话未授权，等待在控制台完成登录")
+        if not _LAST_UNAUTHORIZED:
+            _LAST_UNAUTHORIZED = True
+            logger.info("Telegram 用户会话未授权，等待在控制台完成登录")
         return False
+    _LAST_UNAUTHORIZED = False
 
     try:
         build_clients()
@@ -248,7 +257,8 @@ async def start_clients():
                 logger.warning("补齐后会自动接上，无需重启容器。")
                 logger.warning("=" * 60)
                 notified = True
-            await asyncio.sleep(5)
+            # 未就绪时低频轮询：每轮都要建一次 Telethon 短连接，太频繁会刷日志
+            await asyncio.sleep(30)
 
         logger.info("Telegram 链路已就绪，开始监听消息")
         await asyncio.gather(

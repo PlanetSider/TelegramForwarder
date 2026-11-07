@@ -105,7 +105,10 @@
               {% if telegram.telegram.bot_username %}
               <span class="hint">@{{ telegram.telegram.bot_username }}</span>
               {% endif %}
-            {% elif telegram %}<span class="tag no">○ 离线</span>
+            {% elif telegram %}
+              {% if not telegram.telegram.configured %}<span class="tag warn">○ 未配置</span>
+              {% elif not telegram.telegram.authorized %}<span class="tag warn">○ 待登录</span>
+              {% else %}<span class="tag no">○ 离线</span>{% endif %}
             {% else %}<span class="tag off">○ 主进程不可达</span>{% endif %}
             {% if telegram and not telegram.telegram.bot_connected and telegram.telegram.error %}
             <div class="hint" style="margin-top:6px">同上：{{ telegram.telegram.error }}</div>

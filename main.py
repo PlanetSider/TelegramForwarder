@@ -63,6 +63,9 @@ TELEGRAM_STATUS = {
     "error": None,
 }
 
+# 上一次打印过的缺失项，避免重试循环里每 5 秒刷一条同样的日志
+_LAST_MISSING = []
+
 # 客户端在拿到凭据之后才构造，模块级先占位：
 # utils/common.get_user_client() 依赖 main 模块上的这两个名字存在。
 user_client = None
@@ -171,8 +174,12 @@ async def start_telegram() -> bool:
     TELEGRAM_STATUS["configured"] = not missing
     TELEGRAM_STATUS["missing"] = missing
     if missing:
+        global _LAST_MISSING
+
         TELEGRAM_STATUS["error"] = "缺少配置：" + "、".join(missing)
-        logger.info("尚未配置 %s，Telegram 链路待配置", '、'.join(missing))
+        if missing != _LAST_MISSING:
+            _LAST_MISSING = list(missing)
+            logger.info("尚未配置 %s，Telegram 链路待配置", '、'.join(missing))
         return False
 
     authorized = await user_session_authorized()

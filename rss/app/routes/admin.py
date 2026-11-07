@@ -207,6 +207,8 @@ async def admin_dialogs(request: Request, kind: str, user=Depends(get_current_us
     if kind not in valid:
         return RedirectResponse(url="/admin/dialogs/group", status_code=302)
 
+    from rss.app.services import bridge_client
+
     data = await bridge_client.get_dialogs() or {}
     all_items = data.get("items") or []
     items = [d for d in all_items if d.get("kind") == kind]

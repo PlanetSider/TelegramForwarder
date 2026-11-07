@@ -62,11 +62,11 @@ async def _auth_middleware(request: web.Request, handler):
     return await handler(request)
 
 
-def _clients():
+async def _clients():
     """从 main 模块取两个 Telethon 客户端（可能尚未就绪）。"""
     try:
         from utils.common import get_main_module
-        main = get_main_module()
+        main = await get_main_module()
         return getattr(main, "user_client", None), getattr(main, "bot_client", None)
     except Exception as exc:
         logger.debug("获取客户端失败: %s", exc)
@@ -74,12 +74,12 @@ def _clients():
 
 
 async def _handle_status(request: web.Request) -> web.Response:
-    user_client, bot_client = _clients()
+    user_client, bot_client = await _clients()
 
     runtime: Dict[str, Any] = {}
     try:
         from utils.common import get_main_module
-        runtime = dict(getattr(get_main_module(), "TELEGRAM_STATUS", {}) or {})
+        runtime = dict(getattr(await get_main_module(), "TELEGRAM_STATUS", {}) or {})
     except Exception:
         runtime = {}
 
@@ -115,7 +115,7 @@ async def _handle_status(request: web.Request) -> web.Response:
 
 async def _handle_dialogs(request: web.Request) -> web.Response:
     """列出用户账号可访问的会话，供控制台「新建规则」选择源频道。"""
-    user_client, _ = _clients()
+    user_client, _ = await _clients()
     if user_client is None or not user_client.is_connected():
         return _json_error("用户客户端未连接", 503)
 
@@ -203,7 +203,7 @@ async def _resolve_entity(client, text: str):
 
 async def _handle_create_rule(request: web.Request) -> web.Response:
     """按「源 / 目标」创建一条转发规则（复用主进程的 Telethon 实体解析）。"""
-    user_client, _ = _clients()
+    user_client, _ = await _clients()
     if user_client is None or not user_client.is_connected():
         return _json_error("用户客户端未连接", 503)
 

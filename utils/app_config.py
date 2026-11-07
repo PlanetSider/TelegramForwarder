@@ -154,6 +154,12 @@ SETTINGS: List[SettingSpec] = [
                 help="开放平台自建应用的 App ID；与 App Secret 一起填写后才启用长连接命令控制"),
     SettingSpec("FEISHU_APP_SECRET", "应用 App Secret", "feishu", "password", secret=True, restart=True,
                 help="与 App ID 配对，用于建立长连接；保存后需重启容器才会重连"),
+    SettingSpec("FEISHU_PLATFORM", "开放平台", "feishu", "select", default="feishu",
+                options=(("feishu", "飞书（中国版 open.feishu.cn）"),
+                         ("lark", "Lark 国际版（open.larksuite.com）")),
+                restart=True,
+                help="决定长连接连向哪个域名；应用在飞书开放平台创建就选飞书，"
+                     "在 Lark 开放平台创建就选 Lark。选错会报 1000040351 Incorrect domain name"),
     SettingSpec("FEISHU_ALLOWED_USERS", "命令白名单", "feishu", "text",
                 help="允许下发命令的 open_id，多个用逗号或分号分隔；留空表示拒绝所有命令，"
                      "第一次可先留空，从容器日志里取到来访者的 open_id 再填回"),

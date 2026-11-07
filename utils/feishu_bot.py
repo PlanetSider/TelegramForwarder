@@ -77,7 +77,10 @@ def get_feishu_bot_config():
         for item in raw.replace(";", ",").split(",")
         if item.strip()
     }
-    return app_id, app_secret, allowed
+    platform = (_env("FEISHU_PLATFORM") or "feishu").strip().lower()
+    if platform not in ("feishu", "lark"):
+        platform = "feishu"
+    return app_id, app_secret, allowed, platform
 
 
 def _chat_name(chat) -> str:
@@ -198,11 +201,17 @@ async def run_feishu_bot() -> None:
         logger.error("未安装 lark-oapi，飞书命令功能不可用（pip install lark-oapi）")
         return
 
-    app_id, app_secret, _ = config
+    app_id, app_secret, _, platform = config
     _STATUS.update(configured=True, app_id=app_id, error=None)
 
     try:
-        channel = FeishuChannel(app_id=app_id, app_secret=app_secret)
+        # 飞书（中国）与 Lark（国际）是两套域名，连错会报 1000040351 Incorrect domain name
+        try:
+            from lark_oapi import FEISHU_DOMAIN, LARK_DOMAIN
+            domain = LARK_DOMAIN if platform == "lark" else FEISHU_DOMAIN
+        except Exception:
+            domain = None
+        channel = FeishuChannel(app_id=app_id, app_secret=app_secret, domain=domain)
     except Exception as exc:
         _STATUS.update(connected=False, error=f"初始化失败: {exc}")
         logger.error(f"飞书应用机器人初始化失败: {exc}")
@@ -217,7 +226,7 @@ async def run_feishu_bot() -> None:
                 return
 
             # 白名单实时读取：在控制台「飞书」页保存后立即生效，不必重启
-            _, _, allowed_users = get_feishu_bot_config() or (None, None, set())
+            _, _, allowed_users, _ = get_feishu_bot_config() or (None, None, set(), "feishu")
 
             if not allowed_users:
                 logger.warning(

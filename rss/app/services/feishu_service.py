@@ -53,6 +53,7 @@ def bot_rows(session, platform: Optional[str] = None) -> List[Dict[str, Any]]:
                 # 有没有扫码创建者：决定「直接发送」（私聊）这一项可不可用
                 "has_owner": bool((getattr(bot, "owner_open_id", "") or "").strip()),
                 "owner_name": (getattr(bot, "owner_name", "") or "").strip(),
+                "owner_open_id": (getattr(bot, "owner_open_id", "") or "").strip(),
             }
         )
     return rows
@@ -131,6 +132,7 @@ def update_bot(
     app_secret: Optional[str] = None,
     enable: Optional[bool] = None,
     is_default: Optional[bool] = None,
+    owner_open_id: Optional[str] = None,
 ) -> tuple:
     bot = session.query(FeishuBot).get(bot_id)
     if not bot:
@@ -143,6 +145,8 @@ def update_bot(
             bot.app_secret = app_secret.strip()
         if enable is not None:
             bot.enable = bool(enable)
+        if owner_open_id is not None:
+            bot.owner_open_id = owner_open_id.strip() or None
         if is_default is True:
             bot.is_default = True
             _clear_other_defaults(session, bot.id)

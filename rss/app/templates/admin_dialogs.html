@@ -132,12 +132,12 @@ async function onTargetChange() {
     const chats = (r && r.chats) || [];
     chatSel.innerHTML = '';
 
-    if (canDirect) {
-      const opt = document.createElement('option');
-      opt.value = '__direct__';
-      opt.textContent = '直接发送（发给应用创建者私聊）';
-      chatSel.appendChild(opt);
-    }
+    const directOpt = document.createElement('option');
+    directOpt.value = '__direct__';
+    directOpt.textContent = canDirect
+      ? '直接发送（发给应用创建者私聊）'
+      : '直接发送（还没记录创建者，先在飞书给它发一句话）';
+    chatSel.appendChild(directOpt);
 
     chats.forEach(function (c) {
       const opt = document.createElement('option');

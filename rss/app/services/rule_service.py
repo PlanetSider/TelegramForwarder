@@ -16,8 +16,11 @@ logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------- 序列化
 
-def _chat_brief(chat: Optional[Chat]) -> Optional[Dict[str, Any]]:
+def _chat_brief(chat: Optional[Chat], placeholder: str = "") -> Optional[Dict[str, Any]]:
     if not chat:
+        # 推送规则不复制到别的 Telegram 会话，target 为空，用占位名代替
+        if placeholder:
+            return {"id": None, "name": placeholder, "tg_id": None}
         return None
     return {"id": chat.id, "name": chat.name or "未命名",
             "tg_id": chat.telegram_chat_id}
@@ -35,7 +38,7 @@ def rule_brief(rule: ForwardRule) -> Dict[str, Any]:
     return {
         "id": rule.id,
         "source": _chat_brief(rule.source_chat),
-        "target": _chat_brief(rule.target_chat),
+        "target": _chat_brief(rule.target_chat, "飞书推送"),
         "enable_rule": bool(rule.enable_rule),
         "use_bot": bool(rule.use_bot),
         "handle_mode": _enum_value(rule.handle_mode, "FORWARD"),
@@ -115,7 +118,7 @@ def rule_detail(rule: ForwardRule) -> Dict[str, Any]:
         "id": rule.id,
         "feishu_bot": feishu_bot,
         "source": _chat_brief(rule.source_chat),
-        "target": _chat_brief(rule.target_chat),
+        "target": _chat_brief(rule.target_chat, "飞书推送"),
         # 基础
         "enable_rule": bool(rule.enable_rule),
         "use_bot": bool(rule.use_bot),

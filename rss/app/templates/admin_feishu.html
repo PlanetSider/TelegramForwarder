@@ -31,7 +31,7 @@
       <div style="width:150px">App Secret</div>
       <div style="width:80px">规则</div>
       <div style="width:90px">状态</div>
-      <div style="width:230px;text-align:right">操作</div>
+      <div style="width:300px;text-align:right">操作</div>
     </div>
     {% for b in bots %}
     <div class="row" style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid #f0f0f0">
@@ -48,13 +48,14 @@
       <div style="width:90px">
         {% if b.enable %}<span class="tag ok">启用</span>{% else %}<span class="tag off">停用</span>{% endif %}
       </div>
-      <div style="width:230px;text-align:right;white-space:nowrap">
+      <div style="width:300px;text-align:right;white-space:nowrap">
         {% if not b.is_default %}<button class="btn sm" onclick="setDefault({{ b.id }})">设为默认</button>{% endif %}
-        <button class="btn sm" onclick="renameBot({{ b.id }}, {{ b.name|tojson }})">改名</button>
+        <button class="btn sm" onclick='renameBot({{ b.id }}, {{ b.name|tojson }})'>改名</button>
+        <button class="btn sm" onclick='editBot({{ b.id }}, {{ b.label|tojson }}, {{ b.owner_open_id|tojson }}, {{ b.owner_name|tojson }})'>编辑</button>
         <button class="btn sm" onclick="toggleBot({{ b.id }}, {{ 'false' if b.enable else 'true' }})">
           {{ '停用' if b.enable else '启用' }}
         </button>
-        <button class="btn sm danger" onclick="removeBot({{ b.id }}, {{ b.label|tojson }})">删除</button>
+        <button class="btn sm danger" onclick='removeBot({{ b.id }}, {{ b.label|tojson }})'>删除</button>
       </div>
     </div>
     {% endfor %}
@@ -130,7 +131,7 @@
       <div style="flex:1">名称 / 地址</div>
       <div style="width:90px">签名</div>
       <div style="width:80px">状态</div>
-      <div style="width:130px;text-align:right">操作</div>
+      <div style="width:210px;text-align:right">操作</div>
     </div>
     {% for h in webhooks %}
     <div class="row" style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid #f0f0f0">
@@ -147,11 +148,12 @@
       <div style="width:80px">
         {% if h.enable %}<span class="tag ok">启用</span>{% else %}<span class="tag off">停用</span>{% endif %}
       </div>
-      <div style="width:130px;text-align:right;white-space:nowrap">
+      <div style="width:210px;text-align:right;white-space:nowrap">
+        <button class="btn sm" onclick='editHook({{ h.id }}, {{ h.label|tojson }}, {{ h.url|tojson }})'>编辑</button>
         <button class="btn sm" onclick="toggleHook({{ h.id }}, {{ 'false' if h.enable else 'true' }})">
           {{ '停用' if h.enable else '启用' }}
         </button>
-        <button class="btn sm danger" onclick="removeHook({{ h.id }}, {{ h.label|tojson }})">删除</button>
+        <button class="btn sm danger" onclick='removeHook({{ h.id }}, {{ h.label|tojson }})'>删除</button>
       </div>
     </div>
     {% endfor %}
@@ -200,6 +202,63 @@
     {% else %}
     <div class="empty">还没有群机器人推送配置</div>
     {% endif %}
+  </div>
+</div>
+
+<!-- 应用机器人编辑弹窗 -->
+<div id="botModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:60;align-items:center;justify-content:center">
+  <div class="card" style="width:460px;max-width:92vw;margin:0">
+    <div class="card-h">
+      <h3 id="botModalTitle">编辑应用机器人</h3>
+      <button class="btn ghost sm" onclick="closeBotEdit()">关闭</button>
+    </div>
+    <div class="card-b">
+      <div class="field" style="margin-bottom:10px">
+        <label>昵称</label>
+        <input class="input" id="ebName" placeholder="留空则显示 App ID">
+      </div>
+      <div class="field" style="margin-bottom:10px">
+        <label>App Secret</label>
+        <input class="input" id="ebSecret" type="password" placeholder="不修改就留空" autocomplete="off">
+      </div>
+      <div class="field" style="margin-bottom:12px">
+        <label>创建者 open_id</label>
+        <input class="input" id="ebOwner" placeholder="ou_xxxxxxxxxxxxxxxxxxxxxxxx">
+        <div class="hint">「直接发送」靠它私聊。在飞书里给这个机器人发一句话会自动填上，也可以手动粘贴。</div>
+      </div>
+      <div class="row" style="display:flex;gap:8px;justify-content:flex-end">
+        <button class="btn ghost" onclick="closeBotEdit()">取消</button>
+        <button class="btn primary" onclick="saveBotEdit()">保存</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 群机器人编辑弹窗 -->
+<div id="hookModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:60;align-items:center;justify-content:center">
+  <div class="card" style="width:520px;max-width:92vw;margin:0">
+    <div class="card-h">
+      <h3 id="hookModalTitle">编辑群机器人</h3>
+      <button class="btn ghost sm" onclick="closeHookEdit()">关闭</button>
+    </div>
+    <div class="card-b">
+      <div class="field" style="margin-bottom:10px">
+        <label>名称</label>
+        <input class="input" id="ehName" placeholder="如 运营播报群">
+      </div>
+      <div class="field" style="margin-bottom:10px">
+        <label>webhook 地址</label>
+        <input class="input" id="ehUrl" placeholder="https://open.feishu.cn/open-apis/bot/v2/hook/...">
+      </div>
+      <div class="field" style="margin-bottom:12px">
+        <label>签名密钥</label>
+        <input class="input" id="ehSecret" placeholder="不修改就留空；要清除请填一个空格" autocomplete="off">
+      </div>
+      <div class="row" style="display:flex;gap:8px;justify-content:flex-end">
+        <button class="btn ghost" onclick="closeHookEdit()">取消</button>
+        <button class="btn primary" onclick="saveHookEdit()">保存</button>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -404,6 +463,71 @@ async function renameBot(id, current) {
     setTimeout(() => location.reload(), 400);
   } catch (err) {
     window.toast(err.message || '操作失败', 'error');
+  }
+}
+
+let editingBotId = null;
+
+function editBot(id, label, owner) {
+  editingBotId = id;
+  const isAppId = label && label.indexOf('cli_') === 0;
+  document.getElementById('botModalTitle').textContent = '编辑 ' + (label || ('#' + id));
+  document.getElementById('ebName').value = isAppId ? '' : (label || '');
+  document.getElementById('ebSecret').value = '';
+  document.getElementById('ebOwner').value = owner || '';
+  document.getElementById('botModal').style.display = 'grid';
+}
+
+function closeBotEdit() {
+  document.getElementById('botModal').style.display = 'none';
+}
+
+async function saveBotEdit() {
+  if (!editingBotId) return;
+  const payload = {
+    name: (document.getElementById('ebName').value || '').trim(),
+    owner_open_id: (document.getElementById('ebOwner').value || '').trim()
+  };
+  const secret = (document.getElementById('ebSecret').value || '').trim();
+  if (secret) payload.app_secret = secret;
+  try {
+    await window.api('POST', '/admin/api/feishu/bots/' + editingBotId, payload);
+    window.toast('已保存');
+    setTimeout(() => location.reload(), 400);
+  } catch (err) {
+    window.toast(err.message || '保存失败', 'error');
+  }
+}
+
+let editingHookId = null;
+
+function editHook(id, label, url) {
+  editingHookId = id;
+  document.getElementById('hookModalTitle').textContent = '编辑 ' + (label || ('#' + id));
+  document.getElementById('ehName').value = label || '';
+  document.getElementById('ehUrl').value = url || '';
+  document.getElementById('ehSecret').value = '';
+  document.getElementById('hookModal').style.display = 'grid';
+}
+
+function closeHookEdit() {
+  document.getElementById('hookModal').style.display = 'none';
+}
+
+async function saveHookEdit() {
+  if (!editingHookId) return;
+  const payload = {
+    name: (document.getElementById('ehName').value || '').trim(),
+    url: (document.getElementById('ehUrl').value || '').trim()
+  };
+  const secret = (document.getElementById('ehSecret').value || '').trim();
+  if (secret) payload.secret = secret;
+  try {
+    await window.api('POST', '/admin/api/feishu/webhooks/' + editingHookId, payload);
+    window.toast('已保存');
+    setTimeout(() => location.reload(), 400);
+  } catch (err) {
+    window.toast(err.message || '保存失败', 'error');
   }
 }
 

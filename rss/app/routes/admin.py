@@ -810,7 +810,7 @@ async def admin_api_add_feishu_bot(request: Request, user=Depends(get_current_us
 @router.post("/api/feishu/bots/{bot_id}")
 async def admin_api_update_feishu_bot(bot_id: int, request: Request,
                                       user=Depends(get_current_user)):
-    """改昵称 / 换密钥 / 启停 / 设为默认。"""
+    """改昵称 / 换密钥 / 启停 / 设为默认 / 补创建者 open_id。"""
     if not user:
         return _fail("请先登录", 401)
 
@@ -818,7 +818,7 @@ async def admin_api_update_feishu_bot(bot_id: int, request: Request,
 
     body = await _json_body(request)
     kwargs = {}
-    for key in ("name", "app_secret", "enable", "is_default"):
+    for key in ("name", "app_secret", "enable", "is_default", "owner_open_id"):
         if key in body:
             kwargs[key] = body.get(key)
 

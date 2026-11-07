@@ -229,7 +229,7 @@ async def _handle_create_rule(request: web.Request) -> web.Response:
     if target_entity is None:
         return _json_error(f"目标会话解析失败：{target_err}")
 
-    from models.models import get_session, Chat, ForwardRule
+    from models.models import get_session, Chat, ForwardRule, FeishuWebhook, PushConfig
     from enums.enums import ForwardMode, AddMode
 
     session = get_session()
@@ -246,34 +246,16 @@ async def _handle_create_rule(request: web.Request) -> web.Response:
             return chat
 
         source_chat = _upsert(source_entity)
-        target_chat = _upsert(target_entity)
+        is_push = bool(feishu_bot_id or feishu_webhook_id)
 
-        existed = (session.query(ForwardRule)
-                   .filter(ForwardRule.source_chat_id == source_chat.id,
-                           ForwardRule.target_chat_id == target_chat.id).first())
-        if existed:
-            return _json_error(f"已存在相同的转发规则（#{existed.id}）", 409)
-
-        same = source_chat.id == target_chat.id
-        rule = ForwardRule(
-            source_chat_id=source_chat.id,
-            target_chat_id=target_chat.id,
-            forward_mode=ForwardMode.WHITELIST if same else ForwardMode.BLACKLIST,
-            add_mode=AddMode.WHITELIST if same else AddMode.BLACKLIST,
-        )
-        session.add(rule)
-        session.flush()
-
+        hook = None
+        bot_id_int = None
         if feishu_bot_id:
             try:
-                rule.feishu_bot_id = int(feishu_bot_id)
+                bot_id_int = int(feishu_bot_id)
             except (TypeError, ValueError):
                 return _json_error("飞书机器人编号无效")
-            rule.feishu_chat_id = feishu_chat_id or None
-            rule.enable_push = True
-            rule.enable_only_push = True
         elif feishu_webhook_id:
-            from models.models import FeishuWebhook, PushConfig
             try:
                 hook_id = int(feishu_webhook_id)
             except (TypeError, ValueError):
@@ -281,12 +263,66 @@ async def _handle_create_rule(request: web.Request) -> web.Response:
             hook = session.query(FeishuWebhook).get(hook_id)
             if hook is None:
                 return _json_error("群机器人不存在", 404)
-            rule.enable_push = True
-            rule.enable_only_push = True
-            session.add(PushConfig(rule_id=rule.id,
-                                   name=hook.name,
-                                   push_channel=hook.webhook_url,
-                                   enable_push_channel=True))
+
+        if is_push:
+            # 推送规则：Telegram 侧不复制到别的会话，target 留空。
+            # 这样同一条源可以挂多个推送目标，(source, target) 的唯一约束也就不会挡。
+            dup_id = None
+            if bot_id_int:
+                for other in (session.query(ForwardRule)
+                              .filter(ForwardRule.source_chat_id == source_chat.id,
+                                      ForwardRule.feishu_bot_id == bot_id_int).all()):
+                    if (other.feishu_chat_id or "") == (feishu_chat_id or ""):
+                        dup_id = other.id
+                        break
+            else:
+                hit = (session.query(PushConfig)
+                       .join(ForwardRule, ForwardRule.id == PushConfig.rule_id)
+                       .filter(ForwardRule.source_chat_id == source_chat.id,
+                               PushConfig.push_channel == hook.webhook_url).first())
+                if hit is not None:
+                    dup_id = hit.rule_id
+            if dup_id:
+                return _json_error(f"这个推送目标已经配过规则了（#{dup_id}）", 409)
+
+            rule = ForwardRule(
+                source_chat_id=source_chat.id,
+                target_chat_id=None,
+                forward_mode=ForwardMode.BLACKLIST,
+                add_mode=AddMode.BLACKLIST,
+                use_bot=True,
+                enable_push=True,
+                enable_only_push=True,
+            )
+            session.add(rule)
+            session.flush()
+
+            if bot_id_int:
+                rule.feishu_bot_id = bot_id_int
+                rule.feishu_chat_id = feishu_chat_id or None
+            else:
+                session.add(PushConfig(rule_id=rule.id,
+                                       name=hook.name,
+                                       push_channel=hook.webhook_url,
+                                       enable_push_channel=True))
+        else:
+            target_chat = _upsert(target_entity)
+
+            existed = (session.query(ForwardRule)
+                       .filter(ForwardRule.source_chat_id == source_chat.id,
+                               ForwardRule.target_chat_id == target_chat.id).first())
+            if existed:
+                return _json_error(f"已存在相同的转发规则（#{existed.id}）", 409)
+
+            same = source_chat.id == target_chat.id
+            rule = ForwardRule(
+                source_chat_id=source_chat.id,
+                target_chat_id=target_chat.id,
+                forward_mode=ForwardMode.WHITELIST if same else ForwardMode.BLACKLIST,
+                add_mode=AddMode.WHITELIST if same else AddMode.BLACKLIST,
+            )
+            session.add(rule)
+            session.flush()
 
         session.commit()
         return web.json_response({"ok": True, "rule_id": rule.id})

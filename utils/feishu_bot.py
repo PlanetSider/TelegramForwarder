@@ -60,6 +60,7 @@ def _remember_owner(app_id: str, open_id: str, name: str = "") -> None:
         try:
             bot = session.query(FeishuBot).filter(FeishuBot.app_id == app_id).first()
             if bot is None:
+                logger.info(f"飞书消息来自 {open_id}，但库里没有 app_id={app_id} 的机器人记录")
                 return
             if (getattr(bot, "owner_open_id", "") or "").strip():
                 return

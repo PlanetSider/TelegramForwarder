@@ -66,6 +66,7 @@ TELEGRAM_STATUS = {
 # 上一次打印过的缺失项，避免重试循环里每 5 秒刷一条同样的日志
 _LAST_MISSING = []
 _LAST_UNAUTHORIZED = False
+_PROBED_ONCE = False
 
 # 客户端在拿到凭据之后才构造，模块级先占位：
 # utils/common.get_user_client() 依赖 main 模块上的这两个名字存在。
@@ -139,8 +140,18 @@ async def user_session_authorized() -> bool:
     直接调用 ``client.start(phone=...)`` 在未授权时会阻塞等待终端输入验证码，
     在容器里就是一个永不返回的挂起。先检查，避免这种情况。
     """
+    global _PROBED_ONCE
+
+    # 刚刚在控制台完成登录，会话已写盘，直接信任
+    if login_manager.status == STATUS_AUTHORIZED:
+        return True
+    # 未授权状态不会自行改变：本次运行只探测一次，避免反复连接 Telegram
+    if _PROBED_ONCE:
+        return False
+    _PROBED_ONCE = True
+
     if not os.path.exists(os.path.join('./sessions', 'user.session')):
-        # 没有会话文件，必然未授权；不建连接，避免每轮都去连 Telegram
+        # 没有会话文件，必然未授权
         return False
     try:
         probe = TelegramClient('./sessions/user', int(os.getenv('API_ID')), os.getenv('API_HASH'))

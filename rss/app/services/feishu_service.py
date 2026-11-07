@@ -214,7 +214,8 @@ def webhook_rows(session) -> List[Dict[str, Any]]:
             "display": _mask_url(hook.webhook_url),
             "has_secret": bool((hook.secret or "").strip()),
             "enable": bool(hook.enable),
-            "created_at": hook.created_at,
+            # 必须可 JSON 序列化：模板里要 tojson 给前端用
+            "created_at": hook.created_at.isoformat() if hook.created_at else "",
         })
     return rows
 

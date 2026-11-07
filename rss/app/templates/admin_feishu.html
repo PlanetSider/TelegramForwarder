@@ -149,11 +149,120 @@
     {% endif %}
   </div>
 </div>
+
+<!-- 扫码注册弹窗 -->
+<div id="qrModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:60;align-items:center;justify-content:center">
+  <div class="card" style="width:420px;max-width:92vw;margin:0">
+    <div class="card-h">
+      <h3>扫码添加{{ platform_label }}机器人</h3>
+      <button class="btn ghost sm" onclick="closeQr()">关闭</button>
+    </div>
+    <div class="card-b" style="text-align:center">
+      <div id="qrBox" style="min-height:212px;display:flex;align-items:center;justify-content:center;background:#fafafa;border-radius:4px;padding:12px">
+        <div class="empty">正在生成二维码…</div>
+      </div>
+      <div id="qrCode" class="mono" style="margin-top:10px;font-size:15px;letter-spacing:1px"></div>
+      <div id="qrStatus" class="note blue" style="margin-top:10px;text-align:left">
+        用手机{{ platform_label }}扫一扫，确认后会自动填入 App ID 与 Secret
+      </div>
+      <div class="row" style="display:flex;gap:8px;margin-top:12px">
+        <button class="btn ghost sm" onclick="startScan()">刷新二维码</button>
+        <div class="spacer" style="flex:1"></div>
+        <button class="btn ghost sm" onclick="closeQr();document.getElementById('botAppId').scrollIntoView({behavior:'smooth',block:'center'})">手动填写</button>
+      </div>
+    </div>
+  </div>
+</div>
 {% endblock %}
 
 {% block scripts %}
 <script>
 const PLATFORM = {{ platform|tojson }};
+const PLATFORM_LABEL = {{ platform_label|tojson }};
+
+let qrTimer = null;
+let qrSession = null;
+
+function addBot() {
+  const modal = document.getElementById('qrModal');
+  if (!modal) return;
+  modal.style.display = 'flex';
+  startScan();
+}
+
+function closeQr() {
+  const modal = document.getElementById('qrModal');
+  if (modal) modal.style.display = 'none';
+  if (qrTimer) { clearTimeout(qrTimer); qrTimer = null; }
+  qrSession = null;
+}
+
+async function startScan() {
+  const box = document.getElementById('qrBox');
+  const code = document.getElementById('qrCode');
+  const status = document.getElementById('qrStatus');
+  if (qrTimer) { clearTimeout(qrTimer); qrTimer = null; }
+  qrSession = null;
+  box.innerHTML = '<div class="empty">正在生成二维码…</div>';
+  code.textContent = '';
+  status.className = 'note blue';
+  status.textContent = '用手机' + PLATFORM_LABEL + '扫一扫，确认后会自动填入 App ID 与 Secret';
+
+  let r;
+  try {
+    r = await window.api('POST', '/admin/api/feishu/register/start', { platform: PLATFORM });
+  } catch (e) {
+    box.innerHTML = '<div class="empty">生成失败</div>';
+    status.className = 'note';
+    status.textContent = e.message || '生成二维码失败';
+    return;
+  }
+
+  qrSession = r.session_id;
+  if (r.svg) {
+    box.innerHTML = r.svg;
+    const svg = box.querySelector('svg');
+    if (svg) { svg.style.width = '196px'; svg.style.height = '196px'; }
+  } else {
+    box.innerHTML = '<div class="empty">当前环境没装 qrcode 库</div>';
+    status.innerHTML = '<a href="' + r.url + '" target="_blank" rel="noopener">点这里打开授权页</a>';
+  }
+  code.textContent = r.user_code ? ('验证码 ' + r.user_code) : '';
+  schedulePoll(1500);
+}
+
+function schedulePoll(delay) {
+  if (!qrSession) return;
+  qrTimer = setTimeout(pollScan, delay || 2000);
+}
+
+async function pollScan() {
+  if (!qrSession) return;
+  const status = document.getElementById('qrStatus');
+  let r;
+  try {
+    const resp = await fetch('/admin/api/feishu/register/poll?session_id=' + encodeURIComponent(qrSession),
+                             { credentials: 'same-origin' });
+    r = await resp.json();
+  } catch (e) {
+    schedulePoll(3000);
+    return;
+  }
+
+  if (r.status === 'complete') {
+    status.className = 'note blue';
+    status.textContent = '已添加：' + r.app_id + (r.saved ? '，正在刷新…' : '（' + (r.message || '保存失败') + '）');
+    if (r.saved) setTimeout(() => location.reload(), 900);
+    return;
+  }
+  if (r.status === 'expired' || r.status === 'denied') {
+    status.className = 'note';
+    status.textContent = r.error || '扫码已结束，请刷新二维码';
+    return;
+  }
+  status.textContent = '等待扫码确认…';
+  schedulePoll((r.retry_after || 3) * 1000);
+}
 
 async function addBotRequest(payload) {
   return window.api('POST', '/admin/api/feishu/bots', payload);

@@ -867,3 +867,77 @@ async def admin_api_feishu_chats(bot_id: int, user=Depends(get_current_user)):
         session.close()
 
     return {"ok": True, "label": label, "platform": platform, "chats": chats}
+
+
+# --------------------------------------------------- 飞书机器人扫码注册
+
+def _qr_svg(text: str) -> str:
+    """把二维码画成内联 SVG；没装 qrcode 就返回空串，前端回落成链接。"""
+    try:
+        import io
+
+        import qrcode
+        import qrcode.image.svg
+    except Exception:
+        return ""
+    try:
+        image = qrcode.make(text, image_factory=qrcode.image.svg.SvgPathImage)
+        buffer = io.BytesIO()
+        image.save(buffer)
+        return buffer.getvalue().decode("utf-8")
+    except Exception as exc:
+        logger.warning("二维码生成失败: %s", exc)
+        return ""
+
+
+@router.post("/api/feishu/register/start")
+async def admin_api_feishu_register_start(request: Request,
+                                          user=Depends(get_current_user)):
+    """生成扫码注册会话，返回二维码。"""
+    if not user:
+        return _fail("请先登录", 401)
+
+    from utils import feishu_register
+
+    body = await _json_body(request)
+    platform = (body.get("platform") or "feishu").strip().lower()
+    if platform not in ("feishu", "lark"):
+        platform = "feishu"
+
+    result = await feishu_register.start(platform)
+    if not result.get("ok"):
+        return _fail(result.get("error") or "生成二维码失败", 502)
+
+    result["svg"] = _qr_svg(result["url"])
+    return result
+
+
+@router.get("/api/feishu/register/poll")
+async def admin_api_feishu_register_poll(session_id: str,
+                                         user=Depends(get_current_user)):
+    """查询扫码进度；拿到凭据就顺手存进机器人列表。"""
+    if not user:
+        return _fail("请先登录", 401)
+
+    from rss.app.services import feishu_service
+    from utils import feishu_register
+
+    result = await feishu_register.poll(session_id)
+    if result.get("status") != "complete":
+        return result
+
+    session = get_session()
+    try:
+        has_default = feishu_service.get_default(session) is not None
+        ok, message = feishu_service.add_bot(
+            session,
+            app_id=result["app_id"],
+            app_secret=result["app_secret"],
+            name=None,
+            platform=result.get("platform") or "feishu",
+            is_default=not has_default,
+        )
+    finally:
+        session.close()
+
+    return {**result, "saved": ok, "message": message}

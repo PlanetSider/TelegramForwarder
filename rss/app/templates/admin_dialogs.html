@@ -78,7 +78,12 @@
       <div class="field">
         <label>转发到</label>
         <select id="fwdTarget" class="inline-input" style="width:100%"></select>
-        <div class="hint">目标可以是群、频道，也可以是机器人会话（用于通知）</div>
+        <div class="hint">可以选 Telegram 会话，也可以选已保存的飞书 / Lark 机器人</div>
+      </div>
+      <div class="field hide" id="fwdChatWrap">
+        <label>目标群聊</label>
+        <select id="fwdChat" class="inline-input" style="width:100%"></select>
+        <div class="hint" id="fwdChatHint">机器人需要先被拉进这个群，列表才会出现</div>
       </div>
       <div class="row" style="justify-content:flex-end;gap:8px">
         <button class="btn ghost" onclick="closeForward()">取消</button>
@@ -93,7 +98,48 @@
 {% block scripts %}
 <script>
 const ALL_DIALOGS = {{ all_items | tojson }};
+const FEISHU_BOTS = {{ bots | tojson }};
 let pendingSource = null;
+
+function hideChatPicker() {
+  const wrap = document.getElementById('fwdChatWrap');
+  if (wrap) wrap.classList.add('hide');
+  const sel = document.getElementById('fwdChat');
+  if (sel) sel.innerHTML = '';
+}
+
+async function onTargetChange() {
+  const value = document.getElementById('fwdTarget').value || '';
+  const chatSel = document.getElementById('fwdChat');
+  const wrap = document.getElementById('fwdChatWrap');
+
+  if (value.indexOf('bot:') !== 0) {
+    hideChatPicker();
+    return;
+  }
+
+  const botId = value.slice(4);
+  wrap.classList.remove('hide');
+  chatSel.innerHTML = '<option value="">加载中…</option>';
+
+  try {
+    const r = await window.api('GET', '/admin/api/feishu/bots/' + botId + '/chats');
+    const chats = (r && r.chats) || [];
+    chatSel.innerHTML = '';
+    if (!chats.length) {
+      chatSel.innerHTML = '<option value="">没有找到群，先把这个机器人拉进群</option>';
+      return;
+    }
+    chats.forEach(function (c) {
+      const opt = document.createElement('option');
+      opt.value = c.chat_id;
+      opt.textContent = c.name || c.chat_id;
+      chatSel.appendChild(opt);
+    });
+  } catch (err) {
+    chatSel.innerHTML = '<option value="">拉取群失败：' + (err.message || '未知错误') + '</option>';
+  }
+}
 
 function openForward(id, name) {
   pendingSource = id;
@@ -101,13 +147,32 @@ function openForward(id, name) {
 
   const sel = document.getElementById('fwdTarget');
   sel.innerHTML = '';
+
+  const g1 = document.createElement('optgroup');
+  g1.label = 'Telegram 会话';
   ALL_DIALOGS.forEach(function (d) {
     if (d.id === id) return;
     const opt = document.createElement('option');
     opt.value = String(d.id);
     opt.textContent = d.name + ' · ' + d.kind;
-    sel.appendChild(opt);
+    g1.appendChild(opt);
   });
+  sel.appendChild(g1);
+
+  if (FEISHU_BOTS.length) {
+    const g2 = document.createElement('optgroup');
+    g2.label = '飞书 / Lark 机器人';
+    FEISHU_BOTS.forEach(function (b) {
+      const opt = document.createElement('option');
+      opt.value = 'bot:' + b.id;
+      opt.textContent = (b.name || b.app_id) + ' · ' + (b.platform === 'lark' ? 'Lark' : '飞书');
+      g2.appendChild(opt);
+    });
+    sel.appendChild(g2);
+  }
+
+  hideChatPicker();
+  sel.onchange = onTargetChange;
 
   document.getElementById('fwdModal').classList.remove('hide');
   document.getElementById('fwdModal').style.display = 'grid';
@@ -123,16 +188,24 @@ function closeForward() {
 async function doForward() {
   if (pendingSource === null) return;
   const target = document.getElementById('fwdTarget').value;
-  if (!target) { toast('请选择目标会话', 'err'); return; }
+  if (!target) { toast('请选择转发目标', 'err'); return; }
+
+  const body = { source: String(pendingSource) };
+  if (target.indexOf('bot:') === 0) {
+    const chatId = document.getElementById('fwdChat').value;
+    if (!chatId) { toast('请选择目标群聊', 'err'); return; }
+    body.target = String(pendingSource); // 只推送到飞书，不转发到别的 TG 会话
+    body.feishu_bot_id = Number(target.slice(4));
+    body.feishu_chat_id = chatId;
+  } else {
+    body.target = String(target);
+  }
 
   const btn = document.getElementById('fwdOk');
   btn.disabled = true;
   btn.textContent = '创建中…';
   try {
-    const r = await window.api('POST', '/admin/api/rules', {
-      source: String(pendingSource),
-      target: String(target),
-    });
+    const r = await window.api('POST', '/admin/api/rules', body);
     if (r && r.ok) {
       toast('规则已建立，正在打开…');
       const ruleId = r.rule_id || (r.rule && r.rule.id);

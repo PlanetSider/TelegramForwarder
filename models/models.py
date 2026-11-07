@@ -1,7 +1,7 @@
 from sqlalchemy import create_engine, Column, Integer, String, Boolean, ForeignKey, Enum, UniqueConstraint, inspect, text, Date, DateTime
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship, sessionmaker
-from enums.enums import ForwardMode, PreviewMode, MessageMode, AddMode, HandleMode
+from enums.enums import ForwardMode, PreviewMode, MessageMode, AddMode, HandleMode, FeishuPlatform
 from datetime import datetime
 import logging
 import os
@@ -77,6 +77,10 @@ class ForwardRule(Base):
     only_rss = Column(Boolean, default=False)  # 是否只转发RSS
     # 同步功能相关
     enable_sync = Column(Boolean, default=False)  # 是否启用规则同步功能
+
+    # 直接把消息发到飞书/Lark（应用机器人），而不是 Telegram 目标群
+    feishu_bot_id = Column(Integer, ForeignKey('feishu_bots.id'), nullable=True)
+    feishu_chat_id = Column(String(128), nullable=True)  # 机器人所在群的 chat_id
 
     # 添加唯一约束
     __table_args__ = (
@@ -181,6 +185,23 @@ class PushConfig(Base):
 
     # 关系
     rule = relationship('ForwardRule', back_populates='push_config')
+
+class FeishuBot(Base):
+    """一个飞书 / Lark 应用机器人（应用凭证，不是群 webhook）。"""
+    __tablename__ = 'feishu_bots'
+
+    id = Column(Integer, primary_key=True)
+    app_id = Column(String(128), unique=True, nullable=False)
+    app_secret = Column(String(256), nullable=False)
+    name = Column(String(64), nullable=True)  # 昵称，留空时界面显示 app_id
+    platform = Column(Enum(FeishuPlatform), default=FeishuPlatform.FEISHU)
+    is_default = Column(Boolean, default=False)  # 只有默认机器人接收命令
+    enable = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    def label(self) -> str:
+        return (self.name or "").strip() or self.app_id
+
 
 class RSSConfig(Base):
     __tablename__ = 'rss_configs'
@@ -371,6 +392,8 @@ def migrate_db(engine):
         'enable_reverse_whitelist': 'ALTER TABLE forward_rules ADD COLUMN enable_reverse_whitelist BOOLEAN DEFAULT FALSE',
         'only_rss': 'ALTER TABLE forward_rules ADD COLUMN only_rss BOOLEAN DEFAULT FALSE',
         'enable_sync': 'ALTER TABLE forward_rules ADD COLUMN enable_sync BOOLEAN DEFAULT FALSE',
+        'feishu_bot_id': 'ALTER TABLE forward_rules ADD COLUMN feishu_bot_id INTEGER REFERENCES feishu_bots(id)',
+        'feishu_chat_id': 'ALTER TABLE forward_rules ADD COLUMN feishu_chat_id VARCHAR(128)',
         'userinfo_template': 'ALTER TABLE forward_rules ADD COLUMN userinfo_template VARCHAR DEFAULT "**{name}**"',
         'time_template': 'ALTER TABLE forward_rules ADD COLUMN time_template VARCHAR DEFAULT "{time}"',
         'original_link_template': 'ALTER TABLE forward_rules ADD COLUMN original_link_template VARCHAR DEFAULT "原始连接：{original_link}"',

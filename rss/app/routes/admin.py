@@ -48,6 +48,8 @@ def _ctx(request: Request, user, active: str, **extra):
         "settings_groups": [(gid, title) for gid, title, _ in app_config.GROUPS
                             if gid not in ("telegram", "feishu")],
         "settings_group": "",
+        # 侧边栏「通道设置」里飞书 / Lark 是两个页面，靠它判断高亮
+        "platform": "",
     }
     data.update(extra)
     return data
@@ -207,43 +209,73 @@ async def admin_dialogs(request: Request, kind: str, user=Depends(get_current_us
     if kind not in valid:
         return RedirectResponse(url="/admin/dialogs/group", status_code=302)
 
-    from rss.app.services import bridge_client
+    from models.models import get_session
+    from rss.app.services import bridge_client, feishu_service
 
     data = await bridge_client.get_dialogs() or {}
     all_items = data.get("items") or []
     items = [d for d in all_items if d.get("kind") == kind]
     counts = {k: sum(1 for d in all_items if d.get("kind") == k) for k in valid}
 
+    # 弹窗里要能选「飞书 / Lark 机器人」，所以把已保存的应用机器人一并带上
+    session = get_session()
+    try:
+        bots = feishu_service.bot_rows(session)
+    finally:
+        session.close()
+
     return templates.TemplateResponse("admin_dialogs.html", _ctx(
         request, user, "dialogs",
         kind=kind, kinds=DIALOG_KINDS, items=items, counts=counts,
-        reachable=bool(data), all_items=all_items,
+        reachable=bool(data), all_items=all_items, bots=bots,
     ))
 
 
 @router.get("/feishu", response_class=HTMLResponse)
-async def admin_feishu(request: Request, user=Depends(get_current_user)):
-    """飞书设置：应用机器人（命令控制）+ 群机器人推送总览。"""
+async def admin_feishu_root(user=Depends(get_current_user)):
+    """飞书与 Lark 是两个开放平台，各自一个页面。"""
+    if not user:
+        return _login_redirect()
+    return RedirectResponse(url="/admin/feishu/feishu", status_code=302)
+
+
+@router.get("/feishu/{platform}", response_class=HTMLResponse)
+async def admin_feishu(request: Request, platform: str, user=Depends(get_current_user)):
+    """飞书 / Lark 应用机器人管理页。"""
     if not user:
         return _login_redirect()
 
-    from utils import app_config
+    from rss.app.services import feishu_service
 
-    entries = app_config.grouped()
-    current = next((entry for entry in entries if entry[0] == "feishu"), None)
+    platform = platform if platform in ("feishu", "lark") else "feishu"
+    label, domain = {
+        "feishu": ("飞书", "open.feishu.cn"),
+        "lark": ("Lark", "open.larksuite.com"),
+    }[platform]
 
     session = get_session()
     try:
         rows = app_config.as_display(session)
+        bots = feishu_service.bot_rows(session, platform)
         pushes = rule_service.list_feishu_channels(session)
     finally:
         session.close()
 
-    view = {row["key"]: row for row in rows if row.get("group") == "feishu"}
+    view = {row["key"]: row for row in rows if row.get("key") == "FEISHU_ALLOWED_USERS"}
 
     return templates.TemplateResponse(
         "admin_feishu.html",
-        _ctx(request, user, "feishu", current=current, view=view, pushes=pushes),
+        _ctx(
+            request,
+            user,
+            "feishu",
+            view=view,
+            bots=bots,
+            platform=platform,
+            platform_label=label,
+            platform_domain=domain,
+            pushes=pushes,
+        ),
     )
 
 
@@ -734,3 +766,84 @@ async def admin_api_setup_config(request: Request, user=Depends(get_current_user
     if errors:
         return JSONResponse({"ok": False, "saved": saved, "errors": errors}, status_code=400)
     return JSONResponse({"ok": True, "saved": saved, "restart_required": True})
+
+
+# ---------------------------------------------------------------- 飞书机器人
+
+@router.post("/api/feishu/bots")
+async def admin_api_add_feishu_bot(request: Request, user=Depends(get_current_user)):
+    """新增一个应用机器人。"""
+    from rss.app.services import feishu_service
+
+    body = await _json_body(request)
+    session = get_session()
+    try:
+        ok, message = feishu_service.add_bot(
+            session,
+            app_id=body.get("app_id"),
+            app_secret=body.get("app_secret"),
+            name=body.get("name"),
+            platform=body.get("platform") or "feishu",
+            is_default=bool(body.get("is_default")),
+        )
+    finally:
+        session.close()
+    if not ok:
+        return _fail(message)
+    return {"ok": True, "message": message}
+
+
+@router.post("/api/feishu/bots/{bot_id}")
+async def admin_api_update_feishu_bot(bot_id: int, request: Request,
+                                      user=Depends(get_current_user)):
+    """改昵称 / 换密钥 / 启停 / 设为默认。"""
+    from rss.app.services import feishu_service
+
+    body = await _json_body(request)
+    kwargs = {}
+    for key in ("name", "app_secret", "enable", "is_default"):
+        if key in body:
+            kwargs[key] = body.get(key)
+
+    session = get_session()
+    try:
+        ok, message = feishu_service.update_bot(session, bot_id, **kwargs)
+    finally:
+        session.close()
+    if not ok:
+        return _fail(message)
+    return {"ok": True, "message": message}
+
+
+@router.delete("/api/feishu/bots/{bot_id}")
+async def admin_api_delete_feishu_bot(bot_id: int, user=Depends(get_current_user)):
+    from rss.app.services import feishu_service
+
+    session = get_session()
+    try:
+        ok, message = feishu_service.delete_bot(session, bot_id)
+    finally:
+        session.close()
+    if not ok:
+        return _fail(message)
+    return {"ok": True, "message": message}
+
+
+@router.get("/api/feishu/bots/{bot_id}/chats")
+async def admin_api_feishu_chats(bot_id: int, user=Depends(get_current_user)):
+    """列出机器人所在的群，供「对话列表 → 转发」选目标。"""
+    from rss.app.services import feishu_service
+    from utils import feishu_app
+
+    session = get_session()
+    try:
+        bot = feishu_service.get_bot(session, bot_id)
+        if not bot:
+            return _fail("机器人不存在", 404)
+        chats = await feishu_app.list_chats(bot)
+        label = bot.label()
+        platform = getattr(bot.platform, "value", "feishu")
+    finally:
+        session.close()
+
+    return {"ok": True, "label": label, "platform": platform, "chats": chats}

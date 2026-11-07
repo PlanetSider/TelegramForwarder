@@ -1,178 +1,233 @@
 {% extends "admin_base.html" %}
-{% block title %}飞书{% endblock %}
-{% block crumb %}配置 / <b>飞书</b>{% endblock %}
+{% block title %}{{ platform_label }}{% endblock %}
+{% block crumb %}通道设置 / <b>{{ platform_label }}</b>{% endblock %}
 
 {% block content %}
-{% set _, gtitle, gdesc, items = current if current else ('feishu', '飞书', '', []) %}
 <div class="page-head">
   <div>
-    <h1>飞书</h1>
-    <p>应用机器人负责「收命令」，群机器人负责「推消息」，两者互相独立</p>
+    <h1>{{ platform_label }} 应用机器人</h1>
+    <p>应用机器人既能主动发消息，也能接收命令；群机器人（webhook）只能发消息</p>
   </div>
   <div class="actions">
-    <button class="btn primary" id="btnSaveFeishu" onclick="saveFeishu()">保存本页修改</button>
+    <button class="btn primary" onclick="addBot()">添加机器人</button>
   </div>
 </div>
 
 <div class="note blue" style="margin-bottom:14px">
-  修改应用 App ID / Secret 后需要重启容器才会重新建立长连接；
-  命令白名单保存后立即生效，无需重启。
+  这里保存的是 <b>{{ platform_label }} 开放平台</b>创建的企业自建应用，
+  域名是 <code class="mono">{{ platform_domain }}</code>。
+  把飞书的应用填到 Lark 页（或反过来）会报 <code>Incorrect domain name</code>。
+  多个机器人里<b>只有设为默认的那一个</b>会建立长连接接收命令，其余仅用于发消息。
 </div>
 
 <div class="card" style="margin-bottom:16px">
   <div class="card-h">
-    <h3>应用机器人（接收命令）</h3>
-    <span class="sub">开放平台 · 企业自建应用 · 长连接</span>
+    <h3>已保存的机器人</h3>
+    <span class="sub">共 {{ bots|length }} 个</span>
   </div>
   <div class="card-b">
-    <div class="grid g2">
-      {% for item in items %}
-      {% set row = view.get(item.key) or {} %}
-      <div class="field" style="margin-bottom:12px">
-        <label for="cfg-{{ item.key }}">
-          {{ item.label }}
-          {% if item.restart %}<span class="tag warn">需重启</span>{% endif %}
-          {% if row.get('configured') %}<span class="tag ok">已配置</span>{% else %}<span class="tag off">未设置</span>{% endif %}
-        </label>
-
-        {% if item.kind == 'bool' %}
-        <select id="cfg-{{ item.key }}" data-key="{{ item.key }}" data-secret="0"
-                style="width:100%;padding:9px 10px;border:1px solid #d9d9d9;border-radius:8px;background:#fff">
-          <option value="true" {% if (row.get('display') or '')|lower == 'true' %}selected{% endif %}>开启</option>
-          <option value="false" {% if (row.get('display') or '')|lower != 'true' %}selected{% endif %}>关闭</option>
-        </select>
-        {% elif item.secret %}
-        <input id="cfg-{{ item.key }}" data-key="{{ item.key }}" data-secret="1"
-               type="password" value="" autocomplete="off"
-               placeholder="{{ row.get('display') or '未设置' }}"
-               style="width:100%;box-sizing:border-box;padding:9px 10px;border:1px solid #d9d9d9;border-radius:8px">
-        {% else %}
-        <input id="cfg-{{ item.key }}" data-key="{{ item.key }}" data-secret="0" type="text"
-               value="{{ row.get('display') or '' }}" autocomplete="off"
-               style="width:100%;box-sizing:border-box;padding:9px 10px;border:1px solid #d9d9d9;border-radius:8px">
-        {% endif %}
-
-        <div class="hint" style="margin-top:4px;font-size:12px;color:#6b6b6b">
-          {{ item.help }}
-          <code class="mono" style="opacity:.7">{{ item.key }}</code>
+    {% if bots %}
+    <div class="row" style="display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid #e0e0e0;font-size:12px;color:#8c8c8c">
+      <div style="flex:1">名称 / App ID</div>
+      <div style="width:150px">App Secret</div>
+      <div style="width:80px">规则</div>
+      <div style="width:90px">状态</div>
+      <div style="width:230px;text-align:right">操作</div>
+    </div>
+    {% for b in bots %}
+    <div class="row" style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid #f0f0f0">
+      <div style="flex:1;min-width:0">
+        <div style="font-weight:600">
+          {{ b.label }}
+          {% if b.is_default %}<span class="tag ok">默认</span>{% endif %}
+          {% if not b.enable %}<span class="tag off">已停用</span>{% endif %}
         </div>
+        <div class="mono" style="font-size:12px;color:#8c8c8c">{{ b.app_id }}</div>
       </div>
-      {% endfor %}
+      <div style="width:150px" class="mono">{{ b.secret }}</div>
+      <div style="width:80px">{{ b.rule_count }}</div>
+      <div style="width:90px">
+        {% if b.enable %}<span class="tag ok">启用</span>{% else %}<span class="tag off">停用</span>{% endif %}
+      </div>
+      <div style="width:230px;text-align:right;white-space:nowrap">
+        {% if not b.is_default %}<button class="btn sm" onclick="setDefault({{ b.id }})">设为默认</button>{% endif %}
+        <button class="btn sm" onclick="renameBot({{ b.id }}, {{ b.name|tojson }})">改名</button>
+        <button class="btn sm" onclick="toggleBot({{ b.id }}, {{ 'false' if b.enable else 'true' }})">
+          {{ '停用' if b.enable else '启用' }}
+        </button>
+        <button class="btn sm danger" onclick="removeBot({{ b.id }}, {{ b.label|tojson }})">删除</button>
+      </div>
     </div>
-
-    <div class="note" style="margin-top:6px">
-      <b>接入步骤：</b>① 开放平台创建「企业自建应用」并添加「机器人」能力；
-      ② 权限里勾选 <code>im:message</code>；③ 事件订阅选择「长连接」并订阅
-      <code>im.message.receive_v1</code>；④ 发布应用并加入可用范围；
-      ⑤ 把 App ID / Secret 填到上面并重启容器。
-    </div>
-  </div>
-</div>
-
-<div class="card" style="margin-bottom:16px">
-  <div class="card-h">
-    <h3>群机器人（推送消息）</h3>
-    <span class="sub">按规则配置 · 一条规则可挂多个群</span>
-  </div>
-  <div class="card-b">
-    {% if pushes %}
-    <table style="width:100%;border-collapse:collapse;font-size:13px">
-      <thead>
-        <tr style="text-align:left;color:#6b6b6b;font-weight:500">
-          <th style="padding:8px 10px;border-bottom:1px solid #f0f0f0">规则</th>
-          <th style="padding:8px 10px;border-bottom:1px solid #f0f0f0">名称</th>
-          <th style="padding:8px 10px;border-bottom:1px solid #f0f0f0">平台</th>
-          <th style="padding:8px 10px;border-bottom:1px solid #f0f0f0">Webhook</th>
-          <th style="padding:8px 10px;border-bottom:1px solid #f0f0f0">媒体</th>
-          <th style="padding:8px 10px;border-bottom:1px solid #f0f0f0">状态</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for p in pushes %}
-        <tr>
-          <td style="padding:9px 10px;border-bottom:1px solid #fafafa">
-            <a href="/admin/rules/{{ p.rule_id }}">{{ p.rule_name }}</a>
-          </td>
-          <td style="padding:9px 10px;border-bottom:1px solid #fafafa">{{ p.name or '—' }}</td>
-          <td style="padding:9px 10px;border-bottom:1px solid #fafafa">
-            <span class="tag {{ 'push' if p.brand == 'feishu' else 'ai' }}">
-              {{ '飞书' if p.brand == 'feishu' else 'Lark' }}</span>
-          </td>
-          <td class="mono" style="padding:9px 10px;border-bottom:1px solid #fafafa;font-size:12px">{{ p.display }}</td>
-          <td style="padding:9px 10px;border-bottom:1px solid #fafafa">{{ p.media_mode }}</td>
-          <td style="padding:9px 10px;border-bottom:1px solid #fafafa">
-            {% if p.enabled %}<span class="tag ok">启用</span>{% else %}<span class="tag off">停用</span>{% endif %}
-          </td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
+    {% endfor %}
     {% else %}
-    <div class="empty">
-      还没有配置飞书群机器人。到「规则 → 某条规则 → 推送」里添加地址即可，
-      支持 <code class="mono">feishu://机器人令牌?secret=签名密钥</code> 这种简写。
-    </div>
+    <div class="empty">还没有添加 {{ platform_label }} 机器人，点右上角「添加机器人」</div>
     {% endif %}
   </div>
 </div>
 
-<div class="card">
-  <div class="card-h"><h3>地址怎么写</h3><span class="sub">添加推送地址时可用以下任一形式</span></div>
+<div class="card" style="margin-bottom:16px">
+  <div class="card-h">
+    <h3>添加机器人</h3>
+    <span class="sub">{{ platform_domain }}</span>
+  </div>
   <div class="card-b">
-    <div style="line-height:2;font-size:13px">
-      <div><code class="mono">feishu://1234abcd-5678-...?secret=xxxx</code> — 只填令牌，程序自动补全 <span class="mono">open.feishu.cn</span> 前缀</div>
-      <div><code class="mono">lark://1234abcd-5678-...?secret=xxxx</code> — 国际版，自动补全 <span class="mono">open.larksuite.com</span></div>
-      <div><code class="mono">https://open.feishu.cn/open-apis/bot/v2/hook/令牌?secret=签名密钥</code> — 完整地址</div>
-      <div style="color:#6b6b6b;margin-top:6px">
-        群机器人开启了「签名校验」时才需要带 <code>?secret=</code>；
-        开启了「自定义关键词」的，记得让关键词出现在转发内容里（例如把用户名加进模板）。
+    <div class="grid g3">
+      <div class="field">
+        <label>App ID</label>
+        <input class="input" id="botAppId" placeholder="cli_xxxxxxxxxxxx" autocomplete="off">
+      </div>
+      <div class="field">
+        <label>App Secret</label>
+        <input class="input" id="botAppSecret" type="password" placeholder="应用凭证里的 App Secret" autocomplete="off">
+      </div>
+      <div class="field">
+        <label>昵称（可选）</label>
+        <input class="input" id="botName" placeholder="留空则在列表里显示 App ID">
       </div>
     </div>
+    <div class="row" style="display:flex;align-items:center;gap:10px;margin-top:6px">
+      <label style="display:flex;align-items:center;gap:6px;font-size:13px">
+        <input type="checkbox" id="botDefault"> 设为默认（接收命令）
+      </label>
+      <div class="spacer" style="flex:1"></div>
+      <button class="btn primary" onclick="submitBot()">添加</button>
+    </div>
+    <div class="note" style="margin-top:10px">
+      在开放平台「凭证与基础信息」里取 App ID / App Secret；
+      还需要给应用开通 <code>im:message</code> 权限并订阅 <code>im.message.receive_v1</code>（长连接模式）。
+    </div>
+  </div>
+</div>
+
+<div class="card" style="margin-bottom:16px">
+  <div class="card-h">
+    <h3>命令白名单</h3>
+    <span class="sub">只有默认机器人用得到</span>
+  </div>
+  <div class="card-b">
+    <div class="field">
+      <label>允许下发命令的 open_id</label>
+      <input class="input" id="cfg-FEISHU_ALLOWED_USERS"
+             value="{{ (view.get('FEISHU_ALLOWED_USERS') or {}).get('display') or '' }}"
+             placeholder="多个用逗号分隔；留空表示拒绝所有命令">
+    </div>
+    <div class="note" style="margin-top:8px">
+      先留空，在飞书里给机器人随便发一句 <code>/help</code>，日志里会出现你的 open_id，复制进来保存即可。
+    </div>
+    <div class="row" style="margin-top:10px">
+      <button class="btn primary" onclick="saveAllowed()">保存白名单</button>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-h">
+    <h3>群机器人推送</h3>
+    <span class="sub">在规则详情里配置</span>
+  </div>
+  <div class="card-b">
+    {% if pushes %}
+    <div class="row" style="display:flex;gap:10px;padding:6px 0;border-bottom:1px solid #e0e0e0;font-size:12px;color:#8c8c8c">
+      <div style="flex:1">名称 / 地址</div>
+      <div style="width:180px">所属规则</div>
+      <div style="width:80px">状态</div>
+    </div>
+    {% for p in pushes %}
+    <div class="row" style="display:flex;gap:10px;align-items:center;padding:10px 0;border-bottom:1px solid #f0f0f0">
+      <div style="flex:1;min-width:0">
+        <div>{{ p.name or '未命名' }}</div>
+        <div class="mono" style="font-size:12px;color:#8c8c8c">{{ p.display }}</div>
+      </div>
+      <div style="width:180px">{{ p.rule_name or ('规则 #' ~ p.rule_id) }}</div>
+      <div style="width:80px">
+        {% if p.enable %}<span class="tag ok">启用</span>{% else %}<span class="tag off">停用</span>{% endif %}
+      </div>
+    </div>
+    {% endfor %}
+    {% else %}
+    <div class="empty">还没有群机器人推送配置</div>
+    {% endif %}
   </div>
 </div>
 {% endblock %}
 
 {% block scripts %}
 <script>
-async function saveFeishu() {
-  const payload = {};
-  document.querySelectorAll('[data-key]').forEach(function (el) {
-    const key = el.dataset.key;
-    const isSecret = el.dataset.secret === '1';
-    if (isSecret && el.value === '') return;   // 留空 = 不修改
-    payload[key] = el.value;
-  });
+const PLATFORM = {{ platform|tojson }};
 
-  if (Object.keys(payload).length === 0) {
-    toast('没有需要保存的修改', 'err');
+async function addBotRequest(payload) {
+  return window.api('POST', '/admin/api/feishu/bots', payload);
+}
+
+async function submitBot() {
+  const appId = (document.getElementById('botAppId').value || '').trim();
+  const secret = (document.getElementById('botAppSecret').value || '').trim();
+  const name = (document.getElementById('botName').value || '').trim();
+  const isDefault = document.getElementById('botDefault').checked;
+
+  if (!appId || !secret) {
+    window.toast('App ID 和 App Secret 都要填', 'error');
     return;
   }
-
-  const btn = document.getElementById('btnSaveFeishu');
-  btn.disabled = true;
-  btn.textContent = '保存中…';
   try {
-    const resp = await fetch('/admin/api/config', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ values: payload }),
-    });
-    let data = {};
-    try { data = await resp.json(); } catch (e) { /* 忽略 */ }
+    await addBotRequest({ app_id: appId, app_secret: secret, name, platform: PLATFORM, is_default: isDefault });
+    window.toast('已添加');
+    setTimeout(() => location.reload(), 400);
+  } catch (err) {
+    window.toast(err.message || '添加失败', 'error');
+  }
+}
 
-    if (data.ok) {
-      toast('已保存 ' + (data.saved || []).length + ' 项配置');
-      setTimeout(function () { location.reload(); }, 600);
-    } else {
-      const errors = data.errors || [];
-      const first = Array.isArray(errors) ? errors[0] : errors;
-      toast(first || data.error || '保存失败', 'err');
-    }
-  } catch (e) {
-    toast('请求失败：' + e, 'err');
-  } finally {
-    btn.disabled = false;
-    btn.textContent = '保存本页修改';
+async function setDefault(id) {
+  try {
+    await window.api('POST', '/admin/api/feishu/bots/' + id, { is_default: true });
+    window.toast('已设为默认');
+    setTimeout(() => location.reload(), 400);
+  } catch (err) {
+    window.toast(err.message || '操作失败', 'error');
+  }
+}
+
+async function toggleBot(id, enable) {
+  try {
+    await window.api('POST', '/admin/api/feishu/bots/' + id, { enable: enable });
+    window.toast('已更新');
+    setTimeout(() => location.reload(), 400);
+  } catch (err) {
+    window.toast(err.message || '操作失败', 'error');
+  }
+}
+
+async function renameBot(id, current) {
+  const name = window.prompt('新的昵称（留空则显示 App ID）', current || '');
+  if (name === null) return;
+  try {
+    await window.api('POST', '/admin/api/feishu/bots/' + id, { name: name });
+    window.toast('已更新');
+    setTimeout(() => location.reload(), 400);
+  } catch (err) {
+    window.toast(err.message || '操作失败', 'error');
+  }
+}
+
+async function removeBot(id, label) {
+  if (!window.confirm('确定删除「' + label + '」？')) return;
+  try {
+    await window.api('DELETE', '/admin/api/feishu/bots/' + id);
+    window.toast('已删除');
+    setTimeout(() => location.reload(), 400);
+  } catch (err) {
+    window.toast(err.message || '删除失败', 'error');
+  }
+}
+
+async function saveAllowed() {
+  const value = document.getElementById('cfg-FEISHU_ALLOWED_USERS').value || '';
+  try {
+    await window.api('POST', '/admin/api/config', { values: { FEISHU_ALLOWED_USERS: value } });
+    window.toast('已保存');
+  } catch (err) {
+    window.toast(err.message || '保存失败', 'error');
   }
 }
 </script>

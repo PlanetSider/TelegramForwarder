@@ -213,6 +213,11 @@ async def _handle_create_rule(request: web.Request) -> web.Response:
         body = {}
     source_text = (body.get("source") or "").strip()
     target_text = (body.get("target") or "").strip()
+    feishu_bot_id = body.get("feishu_bot_id")
+    feishu_chat_id = (body.get("feishu_chat_id") or "").strip()
+    if feishu_bot_id and not target_text:
+        # 目标选了飞书/Lark 机器人时，Telegram 侧不再转发到别的会话
+        target_text = source_text
     if not source_text or not target_text:
         return _json_error("源与目标都必须填写")
 
@@ -255,6 +260,14 @@ async def _handle_create_rule(request: web.Request) -> web.Response:
             forward_mode=ForwardMode.WHITELIST if same else ForwardMode.BLACKLIST,
             add_mode=AddMode.WHITELIST if same else AddMode.BLACKLIST,
         )
+        if feishu_bot_id:
+            try:
+                rule.feishu_bot_id = int(feishu_bot_id)
+            except (TypeError, ValueError):
+                return _json_error("飞书机器人编号无效")
+            rule.feishu_chat_id = feishu_chat_id or None
+            rule.enable_push = True
+            rule.enable_only_push = True
         session.add(rule)
         session.commit()
         return web.json_response({"ok": True, "rule_id": rule.id})

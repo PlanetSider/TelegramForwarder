@@ -91,8 +91,29 @@ def rule_detail(rule: ForwardRule) -> Dict[str, Any]:
             ],
         }
 
+    feishu_bot = None
+    bot_id = getattr(rule, "feishu_bot_id", None)
+    if bot_id:
+        try:
+            from models.models import FeishuBot
+            session = rule._sa_instance_state.session
+            bot = session.query(FeishuBot).get(bot_id) if session is not None else None
+            if bot is not None:
+                name = (bot.name or "").strip()
+                feishu_bot = {
+                    "id": bot.id,
+                    "app_id": bot.app_id,
+                    "name": name,
+                    "label": name or bot.app_id,
+                    "platform": _enum_value(bot.platform, "feishu"),
+                    "chat_id": (rule.feishu_chat_id or "").strip(),
+                }
+        except Exception:
+            feishu_bot = None
+
     return {
         "id": rule.id,
+        "feishu_bot": feishu_bot,
         "source": _chat_brief(rule.source_chat),
         "target": _chat_brief(rule.target_chat),
         # 基础

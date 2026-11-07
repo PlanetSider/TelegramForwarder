@@ -328,6 +328,31 @@
 
 <!-- ------------------------------------------------------------ 推送 -->
 <div class="tabpane" id="tab-push">
+  {% if rule.feishu_bot %}
+  <div class="card" style="margin-bottom:14px">
+    <div class="card-h">
+      <h3>飞书 / Lark 应用机器人</h3>
+      <span class="sub">在「对话列表」里选机器人时自动绑定</span>
+    </div>
+    <div class="card-b">
+      <div class="row" style="display:flex;align-items:center;gap:12px">
+        <div style="flex:1;min-width:0">
+          <div style="font-weight:600">
+            {{ rule.feishu_bot.label }}
+            <span class="tag {{ 'ai' if rule.feishu_bot.platform == 'lark' else 'ok' }}">
+              {{ 'Lark' if rule.feishu_bot.platform == 'lark' else '飞书' }}
+            </span>
+          </div>
+          <div class="mono" style="font-size:12px;color:#8c8c8c">{{ rule.feishu_bot.app_id }}</div>
+        </div>
+        <div style="width:300px" class="mono">群：{{ rule.feishu_bot.chat_id or '未指定' }}</div>
+      </div>
+      <div class="note blue" style="margin-top:10px">
+        这条规则的消息会通过该机器人发到上面的群，不再走下面的 apprise 地址。
+      </div>
+    </div>
+  </div>
+  {% endif %}
   <div class="card" style="margin-bottom:14px">
     <div class="card-h">
       <h3>推送地址</h3>

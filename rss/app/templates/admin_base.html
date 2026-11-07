@@ -39,8 +39,12 @@
       <a href="/admin/settings/telegram"
          class="{{ 'on' if active == 'settings' and settings_group == 'telegram' else '' }}">
         <span class="ico">✈</span>Telegram</a>
-      <a href="/admin/feishu" class="{{ 'on' if active == 'feishu' else '' }}">
+      <a href="/admin/feishu/feishu"
+         class="{{ 'on' if active == 'feishu' and (platform | default('feishu')) == 'feishu' else '' }}">
         <span class="ico">✦</span>飞书</a>
+      <a href="/admin/feishu/lark"
+         class="{{ 'on' if active == 'feishu' and (platform | default('feishu')) == 'lark' else '' }}">
+        <span class="ico">✈</span>Lark</a>
 
       <div class="nav-group">全局设置</div>
       <div class="nav-sub">

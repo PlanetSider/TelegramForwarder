@@ -24,3 +24,9 @@ class AddMode(enum.Enum):
 class HandleMode(enum.Enum):
     FORWARD = 'FORWARD'
     EDIT = 'EDIT'
+
+
+class FeishuPlatform(enum.Enum):
+    """飞书（中国）与 Lark（国际）是两套开放平台，域名不同。"""
+    FEISHU = 'feishu'
+    LARK = 'lark'

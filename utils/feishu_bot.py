@@ -64,10 +64,45 @@ def _env(*names: str) -> Optional[str]:
     return None
 
 
+def _default_bot_from_db():
+    """取数据库里设了默认（或第一个启用）的应用机器人。"""
+    try:
+        from models.models import get_session, FeishuBot
+
+        session = get_session()
+        try:
+            return (session.query(FeishuBot)
+                    .filter(FeishuBot.enable == True)  # noqa: E712
+                    .order_by(FeishuBot.is_default.desc(), FeishuBot.id)
+                    .first())
+        finally:
+            session.close()
+    except Exception as exc:
+        logger.debug(f"读取数据库里的飞书机器人失败: {exc}")
+        return None
+
+
 def get_feishu_bot_config():
-    """读取应用机器人配置；未配置时返回 None。"""
-    app_id = _env("FEISHU_APP_ID", "LARK_APP_ID")
-    app_secret = _env("FEISHU_APP_SECRET", "LARK_APP_SECRET")
+    """读取默认应用机器人配置；未配置时返回 None。
+
+    优先用控制台「通道设置」里保存的机器人（数据库），
+    环境变量作为旧部署的兼容兜底。
+    """
+    platform = (_env("FEISHU_PLATFORM") or "auto").strip().lower()
+    app_id = app_secret = None
+
+    bot = _default_bot_from_db()
+    if bot is not None:
+        app_id = (bot.app_id or "").strip() or None
+        app_secret = (bot.app_secret or "").strip() or None
+        raw_platform = getattr(bot.platform, "value", None) or str(bot.platform or "")
+        if raw_platform in ("feishu", "lark"):
+            platform = raw_platform
+
+    if not app_id or not app_secret:
+        app_id = _env("FEISHU_APP_ID", "LARK_APP_ID")
+        app_secret = _env("FEISHU_APP_SECRET", "LARK_APP_SECRET")
+
     if not app_id or not app_secret:
         return None
 
@@ -77,7 +112,6 @@ def get_feishu_bot_config():
         for item in raw.replace(";", ",").split(",")
         if item.strip()
     }
-    platform = (_env("FEISHU_PLATFORM") or "auto").strip().lower()
     if platform not in ("feishu", "lark", "auto"):
         platform = "auto"
     return app_id, app_secret, allowed, platform

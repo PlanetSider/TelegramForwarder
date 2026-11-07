@@ -36,6 +36,11 @@ class PushFilter(BaseFilter):
         if not rule.enable_push:
             logger.info('推送未启用，跳过推送')
             return True
+
+        # 规则绑定了飞书 / Lark 应用机器人：直接调开放平台接口，不走 apprise
+        if getattr(rule, 'feishu_bot_id', None):
+            await self._push_via_feishu_bot(context)
+            return True
         
         # 获取规则ID和所有启用的推送配置
         rule_id = rule.id
@@ -362,6 +367,55 @@ class PushFilter(BaseFilter):
             # 返回处理过但未删除的文件
             return processed_files
     
+    async def _push_via_feishu_bot(self, context):
+        """通过规则绑定的飞书 / Lark 应用机器人发送到指定群。
+
+        和 apprise 那条路互斥：规则一旦绑定了机器人，就只用它发，
+        因为机器人本身带 identity，且能配合群聊做权限隔离。
+        """
+        from models.models import get_session as _get_session, FeishuBot
+        from utils import feishu_app
+
+        rule = context.rule
+
+        text = ""
+        if rule.is_original_sender and context.sender_info:
+            text += context.sender_info
+        text += context.message_text or ""
+        if rule.is_original_time and context.time_info:
+            text += context.time_info
+        if rule.is_original_link and context.original_link:
+            text += context.original_link
+
+        if not text.strip():
+            has_media = bool(context.media_files) or bool(context.media_group_messages)
+            text = "（收到一条媒体消息，应用机器人目前只转发文字）" if has_media else "（空消息）"
+
+        chat_id = (rule.feishu_chat_id or "").strip()
+        if not chat_id:
+            context.errors.append("规则未指定飞书群，跳过机器人推送")
+            return
+
+        session = _get_session()
+        try:
+            bot = session.query(FeishuBot).get(rule.feishu_bot_id)
+            if bot is None:
+                context.errors.append("规则绑定的飞书机器人已被删除")
+                return
+
+            label = feishu_app.bot_label(bot)
+            ok, detail = await feishu_app.send_text(bot, chat_id, text)
+            if ok:
+                logger.info(f"已通过「{label}」推送到群 {chat_id}")
+            else:
+                logger.error(f"「{label}」推送失败: {detail}")
+                context.errors.append(f"{label}推送失败: {detail}")
+        except Exception as exc:
+            logger.exception("飞书应用机器人推送异常")
+            context.errors.append(f"飞书机器人推送出错: {exc}")
+        finally:
+            session.close()
+
     async def _push_text_message(self, context, push_configs):
         """推送纯文本消息"""
         rule = context.rule

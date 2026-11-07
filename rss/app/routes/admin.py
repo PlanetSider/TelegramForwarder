@@ -21,6 +21,7 @@ from models.models import get_session
 from rss.app.routes.auth import get_current_user
 from rss.app.services import rule_service
 from utils.log_buffer import get_recent
+from utils import ai_client, app_config
 
 logger = logging.getLogger(__name__)
 
@@ -503,6 +504,28 @@ async def admin_api_delete_replace(replace_id: int, user=Depends(get_current_use
 
 
 # ---------------------------------------------------------------- 配置文件（P3）
+
+@router.post("/api/ai/models")
+async def admin_api_ai_models(request: Request, user=Depends(get_current_user)):
+    """按当前地址与密钥读取可用模型列表（也接受临时传入，便于先测后存）。"""
+    body = await _json_body(request)
+    session = get_session()
+    try:
+        cfg = app_config.get_current(session)
+    finally:
+        session.close()
+
+    base_url = (body.get("base_url") or cfg.get("AI_BASE_URL") or "").strip()
+    api_key = (body.get("api_key") or cfg.get("AI_API_KEY") or "").strip()
+
+    try:
+        models = await ai_client.list_models(base_url, api_key)
+    except Exception as exc:
+        return _fail(f"获取模型失败：{exc}", 502)
+
+    return {"ok": True, "models": models,
+            "base_url": ai_client.normalize_base_url(base_url)}
+
 
 @router.get("/api/configs")
 async def admin_api_list_configs(user=Depends(get_current_user)):

@@ -37,6 +37,23 @@
           <option value="true" {% if (row.get('display') or '')|lower == 'true' %}selected{% endif %}>开启</option>
           <option value="false" {% if (row.get('display') or '')|lower != 'true' %}selected{% endif %}>关闭</option>
         </select>
+        {% elif item.kind == 'select' %}
+        <select id="cfg-{{ item.key }}" data-key="{{ item.key }}" data-secret="0"
+                style="width:100%;padding:9px 10px;border:1px solid #dbe2ea;border-radius:8px;background:#fff">
+          {% for value, text in item.options %}
+          <option value="{{ value }}" {% if (row.get('display') or '') == value %}selected{% endif %}>{{ text }}</option>
+          {% endfor %}
+        </select>
+        {% elif item.kind == 'model' %}
+        <div style="display:flex;gap:8px">
+          <input id="cfg-{{ item.key }}" data-key="{{ item.key }}" data-secret="0" type="text"
+                 value="{{ row.get('display') or '' }}" placeholder="点右侧按钮获取，或直接手填模型 ID"
+                 style="flex:1;box-sizing:border-box;padding:9px 10px;border:1px solid #dbe2ea;border-radius:8px">
+          <button type="button" class="btn ghost" onclick="fetchModels()" style="white-space:nowrap">获取模型</button>
+        </div>
+        <select id="modelPicker"
+                style="display:none;width:100%;margin-top:8px;padding:9px 10px;border:1px solid #dbe2ea;border-radius:8px;background:#fff">
+        </select>
         {% elif item.secret %}
         <input id="cfg-{{ item.key }}" data-key="{{ item.key }}" data-secret="1"
                type="password" value="" autocomplete="off"
@@ -59,26 +76,6 @@
     </div>
   </div>
 </div>
-
-{% if gid == 'ai' %}
-<div class="card" style="margin-bottom:16px">
-  <div class="card-h"><h3>AI 模型清单</h3><span class="sub">config/ai_models.json</span></div>
-  <div class="card-b">
-    {% if ai_models %}
-    <div class="grid g2">
-      {% for provider, models in ai_models.items() %}
-      <div style="margin-bottom:12px">
-        <div style="font-size:12px;color:#6b7684;margin-bottom:6px">{{ provider }}</div>
-        {% for m in models %}<span class="tag">{{ m }}</span>{% endfor %}
-      </div>
-      {% endfor %}
-    </div>
-    {% else %}
-    <div class="empty">未读取到模型配置，请检查 <code class="mono">config/ai_models.json</code></div>
-    {% endif %}
-  </div>
-</div>
-{% endif %}
 
 {% if gid in ('ai', 'storage') %}
 <div class="card">
@@ -114,6 +111,48 @@
 
 {% block scripts %}
 <script>
+async function fetchModels() {
+  const baseEl = document.querySelector('[data-key="AI_BASE_URL"]');
+  const keyEl = document.querySelector('[data-key="AI_API_KEY"]');
+  const payload = {
+    base_url: baseEl ? baseEl.value.trim() : '',
+    api_key: keyEl ? keyEl.value.trim() : '',
+  };
+  try {
+    const resp = await fetch('/admin/api/ai/models', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    let data = {};
+    try { data = await resp.json(); } catch (e) { /* 忽略 */ }
+    if (!data.ok) { toast(data.error || '获取模型失败', 'err'); return; }
+
+    const picker = document.getElementById('modelPicker');
+    picker.innerHTML = '';
+    (data.models || []).forEach(function (m) {
+      const opt = document.createElement('option');
+      opt.value = m;
+      opt.textContent = m;
+      picker.appendChild(opt);
+    });
+    if (!data.models || !data.models.length) {
+      toast('接口没有返回任何模型', 'err');
+      return;
+    }
+    picker.style.display = 'block';
+    picker.onchange = function () {
+      const target = document.querySelector('[data-key="AI_MODEL"]');
+      if (target) target.value = picker.value;
+    };
+    const target = document.querySelector('[data-key="AI_MODEL"]');
+    if (target && !target.value) target.value = data.models[0];
+    toast('已读取 ' + data.models.length + ' 个模型，选中后会自动填入');
+  } catch (e) {
+    toast('请求失败：' + e, 'err');
+  }
+}
+
 async function saveAllSettings() {
   const payload = {};
   document.querySelectorAll('[data-key]').forEach(function (el) {

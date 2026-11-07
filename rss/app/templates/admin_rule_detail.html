@@ -281,8 +281,14 @@
       </div>
       <div class="field">
         <label>模型</label>
-        <div class="val"><span class="tag">{{ rule.ai_model or '未选择' }}</span>
-          <span class="hint">模型清单来自 config/ai_models.json</span></div>
+        <div class="val" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <input class="input" data-field="ai_model" value="{{ rule.ai_model or '' }}"
+                 placeholder="留空则使用全局默认" style="flex:1;min-width:200px;max-width:320px">
+          <button type="button" class="btn ghost btn-sm" onclick="pickModel()">获取模型</button>
+        </div>
+        <select id="ruleModelPicker" class="input"
+                style="display:none;margin-top:8px;max-width:320px"></select>
+        <div class="hint">留空使用「通道设置 · AI 服务」里配置的默认模型</div>
       </div>
       <div class="field">
         <label>上传图片</label>
@@ -512,6 +518,30 @@
 {% endblock %}
 
 {% block scripts %}
+<script>
+async function pickModel() {
+  try {
+    const r = await window.api('POST', '/admin/api/ai/models', {});
+    if (!r || !r.ok) { toast((r && r.error) || '获取模型失败', 'err'); return; }
+    const list = r.models || [];
+    if (!list.length) { toast('接口没有返回任何模型', 'err'); return; }
+    const picker = document.getElementById('ruleModelPicker');
+    const input = document.querySelector('[data-field="ai_model"]');
+    picker.innerHTML = '';
+    list.forEach(function (m) {
+      const opt = document.createElement('option');
+      opt.value = m; opt.textContent = m;
+      picker.appendChild(opt);
+    });
+    if (input && input.value) picker.value = input.value;
+    picker.style.display = 'block';
+    picker.onchange = function () { if (input) input.value = picker.value; };
+    toast('已读取 ' + list.length + ' 个模型，选中后自动填入');
+  } catch (e) {
+    toast('请求失败：' + e, 'err');
+  }
+}
+</script>
 <script>
 (function () {
   var RULE_ID = {{ rule.id }};

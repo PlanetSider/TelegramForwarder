@@ -34,12 +34,54 @@ def _enum_value(value, default: str = "") -> str:
     return getattr(value, "value", str(value))
 
 
+def _route_kind(rule: ForwardRule) -> str:
+    """规则的路由类型，列表页状态列用。
+
+    same_group 同群重发 / cross_group 跨群转发 / cross_channel 跨通道。
+    """
+    if getattr(rule, "feishu_bot_id", None) or rule.enable_only_push:
+        return "cross_channel"
+    if rule.target_chat_id is None:
+        return "cross_channel"
+    if rule.source_chat_id and rule.source_chat_id == rule.target_chat_id:
+        return "same_group"
+    return "cross_group"
+
+
+def _target_label(rule: ForwardRule) -> str:
+    """目标的可读描述，带通道前缀，如「飞书群机器人 · OVH群机器人」。"""
+    if getattr(rule, "feishu_bot_id", None):
+        name = ""
+        try:
+            from models.models import FeishuBot
+            session = rule._sa_instance_state.session
+            if session is not None:
+                bot = session.query(FeishuBot).get(rule.feishu_bot_id)
+                name = (getattr(bot, "name", "") or "").strip()
+        except Exception:
+            name = ""
+        return f"飞书应用机器人 · {name or ('#' + str(rule.feishu_bot_id))}"
+
+    cfg = getattr(rule, "push_config", None)
+    if cfg is not None:
+        name = (getattr(cfg, "name", "") or "").strip() or "群机器人"
+        return f"飞书群机器人 · {name}"
+
+    if rule.target_chat_id is None:
+        return "飞书推送"
+
+    name = (rule.target_chat.name if rule.target_chat else "") or "?"
+    return f"Telegram · {name}"
+
+
 def rule_brief(rule: ForwardRule) -> Dict[str, Any]:
     """列表页用的轻量结构，不展开子表。"""
     return {
         "id": rule.id,
         "source": _chat_brief(rule.source_chat),
         "target": _chat_brief(rule.target_chat, "飞书推送"),
+        "target_label": _target_label(rule),
+        "kind": _route_kind(rule),
         "enable_rule": bool(rule.enable_rule),
         "use_bot": bool(rule.use_bot),
         "handle_mode": _enum_value(rule.handle_mode, "FORWARD"),
@@ -517,6 +559,29 @@ def toggle_rule(session, rule_id: int, enabled: bool) -> bool:
     rule.enable_rule = bool(enabled)
     session.commit()
     return rule.enable_rule
+
+
+def delete_rule(session, rule_id: int) -> bool:
+    """删除规则及其附属数据。
+
+    keywords 与 push_configs 在模型里没有配 cascade（push_config 还写成了
+    uselist=False，多地址时只会级联第一条），所以这里显式清理，避免留孤儿行。
+    """
+    rule = session.query(ForwardRule).get(rule_id)
+    if rule is None:
+        return False
+
+    session.query(Keyword).filter(Keyword.rule_id == rule_id).delete(synchronize_session=False)
+    session.query(PushConfig).filter(PushConfig.rule_id == rule_id).delete(synchronize_session=False)
+    try:
+        from models.models import ForwardStat
+        session.query(ForwardStat).filter(ForwardStat.rule_id == rule_id).delete(synchronize_session=False)
+    except Exception:
+        logger.debug("清理转发统计失败，忽略", exc_info=True)
+
+    session.delete(rule)
+    session.commit()
+    return True
 
 
 # ---------------------------------------------------------------- 推送地址

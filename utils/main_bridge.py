@@ -314,12 +314,13 @@ async def _handle_create_rule(request: web.Request) -> web.Response:
             if existed:
                 return _json_error(f"已存在相同的转发规则（#{existed.id}）", 409)
 
-            same = source_chat.id == target_chat.id
+            # 默认黑名单模式：不设关键字时全部转发。历史上自绑规则默认白名单，
+            # 而白名单为空会拦掉所有消息，新建完一条都转不出去，故统一改为黑名单。
             rule = ForwardRule(
                 source_chat_id=source_chat.id,
                 target_chat_id=target_chat.id,
-                forward_mode=ForwardMode.WHITELIST if same else ForwardMode.BLACKLIST,
-                add_mode=AddMode.WHITELIST if same else AddMode.BLACKLIST,
+                forward_mode=ForwardMode.BLACKLIST,
+                add_mode=AddMode.BLACKLIST,
             )
             session.add(rule)
             session.flush()

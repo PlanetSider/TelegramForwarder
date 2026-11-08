@@ -428,6 +428,24 @@ async def admin_api_toggle_rule(rule_id: int, request: Request,
         session.close()
 
 
+@router.delete("/api/rules/{rule_id}")
+async def admin_api_delete_rule(rule_id: int, user=Depends(get_current_user)):
+    if not user:
+        return _fail("未登录", 401)
+
+    session = get_session()
+    try:
+        removed = rule_service.delete_rule(session, rule_id)
+        if not removed:
+            return _fail("规则不存在", 404)
+        return JSONResponse({"ok": True, "deleted": rule_id})
+    except Exception as exc:
+        logger.exception("删除规则失败 rule=%s", rule_id)
+        return _fail(f"删除失败: {exc}", 500)
+    finally:
+        session.close()
+
+
 # ---------------------------------------------------------------- 推送地址
 
 @router.post("/api/rules/{rule_id}/push")

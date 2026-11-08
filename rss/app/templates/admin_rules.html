@@ -40,8 +40,8 @@
         <th style="width:110px">方式</th>
         <th>能力</th>
         <th style="width:100px">过滤</th>
-        <th style="width:90px">状态</th>
-        <th style="width:80px"></th>
+        <th style="width:120px">状态</th>
+        <th style="width:150px"></th>
       </tr>
     </thead>
     <tbody>
@@ -52,7 +52,7 @@
           <div class="rule-name">
             <a href="/admin/rules/{{ r.id }}" style="color:inherit">{{ r.source.name if r.source else ('规则 ' ~ r.id) }}</a>
           </div>
-          <div class="rule-sub">{{ r.source.name if r.source else '?' }} → {{ r.target.name if r.target else '?' }}</div>
+          <div class="rule-sub">{{ r.source.name if r.source else '?' }} → {{ r.target_label }}</div>
         </td>
         <td>
           {% if r.use_bot %}<span class="tag bot">机器人</span>
@@ -74,8 +74,17 @@
         <td>
           {% if r.enable_rule %}<span class="tag ok">● 启用</span>
           {% else %}<span class="tag off">○ 停用</span>{% endif %}
+          <div style="margin-top:5px">
+            {% if r.kind == 'same_group' %}<span class="tag">同群重发</span>
+            {% elif r.kind == 'cross_group' %}<span class="tag">跨群转发</span>
+            {% else %}<span class="tag push">跨通道</span>{% endif %}
+          </div>
         </td>
-        <td><a class="btn sm ghost" href="/admin/rules/{{ r.id }}">查看</a></td>
+        <td style="white-space:nowrap">
+          <a class="btn sm ghost" href="/admin/rules/{{ r.id }}">查看</a>
+          <button class="btn sm danger" type="button"
+                  onclick="removeRule({{ r.id }})">删除</button>
+        </td>
       </tr>
       {% endfor %}
     </tbody>
@@ -106,13 +115,26 @@
 </div>
 
 <div class="note blue" style="margin-top:14px">
-  目标留空时会创建「源 → 源」的自转发规则（默认白名单模式，常用于原帖美化）。
+  目标留空时会创建「源 → 源」的同群重发规则（默认黑名单模式，不设关键字即全部转发）。
   若主进程内部桥不可达（未启用 RSS 子进程或桥启动失败），新建会失败并提示原因。
 </div>
 {% endblock %}
 
 {% block scripts %}
 <script>
+  window.removeRule = async function (id) {
+    if (!confirm('删除规则 #' + id + '？\n该规则的关键字、替换、RSS、推送配置会一并删除，且不可恢复。')) {
+      return;
+    }
+    try {
+      await window.api('DELETE', '/admin/api/rules/' + id);
+      window.toast('规则 #' + id + ' 已删除', 'ok');
+      setTimeout(function () { location.reload(); }, 500);
+    } catch (err) {
+      window.toast(err.message || '删除失败', 'err');
+    }
+  };
+
   const btnCreate = document.getElementById('btn-create-rule');
   if (btnCreate) {
     btnCreate.addEventListener('click', async () => {

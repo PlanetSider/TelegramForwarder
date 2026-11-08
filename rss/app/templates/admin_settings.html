@@ -23,6 +23,7 @@
   <div class="card-b">
     <div class="grid g2">
       {% for item in items %}
+      {% if item.key != 'DEFAULT_AI_MODEL' %}
       {% set row = view.get(item.key) or {} %}
       <div class="field" style="margin-bottom:12px">
         <label for="cfg-{{ item.key }}">
@@ -76,6 +77,7 @@
           <code class="mono" style="opacity:.7">{{ item.key }}</code>
         </div>
       </div>
+      {% endif %}
       {% endfor %}
     </div>
   </div>
@@ -131,6 +133,16 @@
         <button class="btn primary sm" type="button" onclick="saveDefaultProvider()">设为默认</button>
         <a class="btn ghost sm" href="/admin/ai">管理供应商</a>
       </div>
+    </div>
+    <div class="field">
+      <label for="cfg-DEFAULT_AI_MODEL">默认 AI 模型</label>
+      <div class="val">
+        <input class="input" id="cfg-DEFAULT_AI_MODEL" data-key="DEFAULT_AI_MODEL" data-secret="0"
+               value="{{ (view.get('DEFAULT_AI_MODEL') or {}).get('display') or '' }}"
+               placeholder="如 gpt-4o-mini，留空则用供应商自己的默认模型"
+               style="max-width:280px">
+      </div>
+      <div class="hint">新建规则勾选 AI 时的预选模型。</div>
     </div>
     {% if not providers %}
     <div class="hint">还没有供应商，先去「通道设置 · AI 服务」添加一个。</div>

@@ -3,7 +3,7 @@
 {% block crumb %}转发 / <a href="/admin/rules" style="color:inherit">规则</a> / <b>#{{ rule.id }}</b>{% endblock %}
 
 {% macro sw(name, checked) -%}
-<label class="switch"><input type="checkbox" data-field="{{ name }}" {{ 'checked' if checked else '' }}><span></span></label>
+<label class="switch"><input type="checkbox" data-field="{{ name }}" {{ 'checked' if checked else '' }}><i></i></label>
 {%- endmacro %}
 
 {% macro sel(name, value, options, width='220px') -%}

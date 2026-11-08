@@ -329,9 +329,13 @@ async def run_feishu_bot() -> None:
             continue
 
         channel.on("message", on_message)
+        # connect() 会一直阻塞到连接断开，所以「连上了」只能在进入前立刻置位，
+        # 否则状态要等到断开之后才会被写成 True（概览里就永远显示未连接）。
+        _STATUS.update(connected=True, error=None)
         try:
             await channel.connect()
         except Exception as exc:
+            _STATUS.update(connected=False)
             last_error = exc
             if idx + 1 < len(domains):
                 logger.warning(
@@ -340,7 +344,6 @@ async def run_feishu_bot() -> None:
                 continue
             break
         else:
-            _STATUS.update(connected=True, error=None)
             logger.info("飞书应用机器人已连接，等待命令")
             return
 

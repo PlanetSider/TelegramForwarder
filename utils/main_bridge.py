@@ -265,42 +265,40 @@ async def _handle_create_rule(request: web.Request) -> web.Response:
                 return _json_error("群机器人不存在", 404)
 
         if is_push:
-            # 推送规则：Telegram 侧不复制到别的会话，target 留空。
-            # 这样同一条源可以挂多个推送目标，(source, target) 的唯一约束也就不会挡。
-            dup_id = None
-            if bot_id_int:
-                for other in (session.query(ForwardRule)
-                              .filter(ForwardRule.source_chat_id == source_chat.id,
-                                      ForwardRule.feishu_bot_id == bot_id_int).all()):
-                    if (other.feishu_chat_id or "") == (feishu_chat_id or ""):
-                        dup_id = other.id
-                        break
-            else:
-                hit = (session.query(PushConfig)
-                       .join(ForwardRule, ForwardRule.id == PushConfig.rule_id)
-                       .filter(ForwardRule.source_chat_id == source_chat.id,
-                               PushConfig.push_channel == hook.webhook_url).first())
-                if hit is not None:
-                    dup_id = hit.rule_id
-            if dup_id:
-                return _json_error(f"这个推送目标已经配过规则了（#{dup_id}）", 409)
+            # 推送规则：Telegram 侧不复制到别的会话，target 仍指向源
+            #（forward_rules.target_chat_id 是 NOT NULL，不能留空），
+            # 发送阶段靠 enable_only_push 让发送器直接跳过，只走推送。
+            # 同一条源复用同一条自绑规则，多个推送目标挂在 PushConfig 上，
+            # 这样 (source, target) 的唯一约束不会挡，也不会重复建规则。
+            rule = (session.query(ForwardRule)
+                    .filter(ForwardRule.source_chat_id == source_chat.id,
+                            ForwardRule.target_chat_id == source_chat.id).first())
+            if rule is None:
+                rule = ForwardRule(
+                    source_chat_id=source_chat.id,
+                    target_chat_id=source_chat.id,
+                    forward_mode=ForwardMode.BLACKLIST,
+                    add_mode=AddMode.BLACKLIST,
+                )
+                session.add(rule)
+                session.flush()
 
-            rule = ForwardRule(
-                source_chat_id=source_chat.id,
-                target_chat_id=None,
-                forward_mode=ForwardMode.BLACKLIST,
-                add_mode=AddMode.BLACKLIST,
-                use_bot=True,
-                enable_push=True,
-                enable_only_push=True,
-            )
-            session.add(rule)
-            session.flush()
+            rule.use_bot = True
+            rule.enable_push = True
+            rule.enable_only_push = True
+            rule.forward_mode = ForwardMode.BLACKLIST
 
             if bot_id_int:
                 rule.feishu_bot_id = bot_id_int
                 rule.feishu_chat_id = feishu_chat_id or None
             else:
+                dup = (session.query(PushConfig)
+                       .filter(PushConfig.rule_id == rule.id,
+                               PushConfig.push_channel == hook.webhook_url).first())
+                if dup is not None:
+                    session.commit()
+                    return web.json_response({"ok": True, "rule_id": rule.id,
+                                              "reused": True})
                 session.add(PushConfig(rule_id=rule.id,
                                        name=hook.name,
                                        push_channel=hook.webhook_url,

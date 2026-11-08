@@ -29,6 +29,7 @@ import multiprocessing
 from models.db_operations import DBOperations
 from scheduler.summary_scheduler import SummaryScheduler
 from scheduler.chat_updater import ChatUpdater
+from scheduler.summary_task_runner import SummaryTaskRunner
 from handlers.bot_handler import send_welcome_message
 from rss.main import app as rss_app
 from utils.log_config import setup_logging
@@ -52,6 +53,7 @@ db_ops = None
 
 scheduler = None
 chat_updater = None
+summary_task_runner = None
 rss_process = None
 
 # 控制台通过内部桥读取这份状态，避免只显示笼统的“离线”
@@ -172,7 +174,7 @@ async def user_session_authorized() -> bool:
 
 async def start_telegram() -> bool:
     """启动 Telegram 相关的一切；条件不满足时安静返回 False，由外层重试。"""
-    global db_ops, scheduler, chat_updater, user_client, bot_client
+    global db_ops, scheduler, chat_updater, summary_task_runner, user_client, bot_client
 
     if TELEGRAM_STATUS.get("started"):
         return True
@@ -229,6 +231,9 @@ async def start_telegram() -> bool:
         chat_updater = ChatUpdater(user_client)
         await chat_updater.start()
 
+        summary_task_runner = SummaryTaskRunner(user_client, bot_client)
+        await summary_task_runner.start()
+
         await send_welcome_message(bot_client)
 
         TELEGRAM_STATUS.update(started=True, error=None)
@@ -281,6 +286,8 @@ async def start_clients():
             await db_ops.close()
         if scheduler:
             scheduler.stop()
+        if summary_task_runner:
+            summary_task_runner.stop()
         if chat_updater:
             chat_updater.stop()
         if rss_process and rss_process.is_alive():

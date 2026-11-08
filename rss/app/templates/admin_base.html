@@ -8,7 +8,7 @@
 </head>
 <body>
 <div class="layout">
-  <aside class="sidebar">
+  <aside class="sidebar" id="sidebar">
     <div class="brand">
       <div class="logo">TG</div>
       <div><b>Forwarder</b><span>控制台</span></div>
@@ -72,8 +72,12 @@
     </div>
   </aside>
 
+  <div class="scrim" id="scrim"></div>
+
   <div class="main">
     <header class="topbar">
+      <button class="nav-toggle" type="button" id="navToggle"
+              aria-label="打开导航" aria-expanded="false" aria-controls="sidebar">☰</button>
       <div class="crumb">{% block crumb %}控制台{% endblock %}</div>
       <div class="spacer"></div>
       <a class="btn sm ghost" href="/logout">退出</a>

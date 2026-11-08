@@ -32,7 +32,7 @@
 
 <div class="card">
   {% if rules %}
-  <table>
+  <div class="table-scroll"><table>
     <thead>
       <tr>
         <th style="width:70px">ID</th>
@@ -88,7 +88,7 @@
       </tr>
       {% endfor %}
     </tbody>
-  </table>
+  </table></div>
   {% else %}
   <div class="empty">
     没有匹配的规则。

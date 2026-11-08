@@ -78,3 +78,31 @@
     return out;
   };
 })();
+
+/* ------------------------------------------------------------ 移动端导航抽屉 */
+(function () {
+  var btn = document.getElementById('navToggle');
+  var side = document.getElementById('sidebar');
+  var scrim = document.getElementById('scrim');
+  if (!btn || !side || !scrim) return;
+
+  function setOpen(open) {
+    document.body.classList.toggle('menu-open', open);
+    btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+  }
+
+  btn.addEventListener('click', function () {
+    setOpen(!document.body.classList.contains('menu-open'));
+  });
+  scrim.addEventListener('click', function () { setOpen(false); });
+  side.addEventListener('click', function (e) {
+    if (e.target.closest('a')) setOpen(false);
+  });
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && document.body.classList.contains('menu-open')) setOpen(false);
+  });
+  var mq = window.matchMedia('(max-width: 768px)');
+  var onChange = function () { if (!mq.matches) setOpen(false); };
+  if (mq.addEventListener) mq.addEventListener('change', onChange);
+  else if (mq.addListener) mq.addListener(onChange);
+})();

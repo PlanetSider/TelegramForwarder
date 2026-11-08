@@ -35,7 +35,7 @@
   </div>
   <div class="card-b" style="padding:0">
     {% if items %}
-    <table>
+    <div class="table-scroll"><table>
       <thead>
         <tr>
           <th style="width:44%">名称</th>
@@ -59,7 +59,7 @@
         </tr>
         {% endfor %}
       </tbody>
-    </table>
+    </table></div>
     {% else %}
     <div class="empty">这一类下没有会话</div>
     {% endif %}

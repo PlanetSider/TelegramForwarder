@@ -24,19 +24,19 @@
     <div class="grid g2">
       <div class="field">
         <label for="apiId">API_ID</label>
-        <input id="apiId" placeholder="1234567" value="{{ defaults.api_id }}" autocomplete="off">
+        <input id="apiId" class="input" placeholder="1234567" value="{{ defaults.api_id }}" autocomplete="off">
       </div>
       <div class="field">
         <label for="apiHash">API_HASH</label>
-        <input id="apiHash" placeholder="32 位十六进制字符串" autocomplete="off">
+        <input id="apiHash" class="input" placeholder="32 位十六进制字符串" autocomplete="off">
       </div>
       <div class="field">
         <label for="phone">手机号（含国家码）</label>
-        <input id="phone" placeholder="+8613800138000" value="{{ defaults.phone }}" autocomplete="off">
+        <input id="phone" class="input" placeholder="+8613800138000" value="{{ defaults.phone }}" autocomplete="off">
       </div>
       <div class="field">
         <label for="botToken">BOT_TOKEN</label>
-        <input id="botToken" placeholder="123456789:AAxxxxxxxx" autocomplete="off">
+        <input id="botToken" class="input" placeholder="123456789:AAxxxxxxxx" autocomplete="off">
       </div>
     </div>
 
@@ -57,7 +57,7 @@
   <div class="card-b">
     <div class="note blue">验证码会发到你 Telegram 的「Telegram」官方会话里，5 分钟内有效。</div>
     <div class="row" style="margin-top:12px">
-      <input id="code" class="inline-input" style="max-width:220px" placeholder="5 位验证码" autocomplete="off">
+      <input id="code" class="input" style="max-width:220px" placeholder="5 位验证码" autocomplete="off">
       <button class="btn primary" id="btnVerify" onclick="verifyCode()">验证</button>
     </div>
   </div>
@@ -68,7 +68,7 @@
   <div class="card-b">
     <div class="note blue">该账号开启了两步验证（2FA），请输入你的 Telegram 密码。</div>
     <div class="row" style="margin-top:12px">
-      <input id="twofa" type="password" class="inline-input" style="max-width:260px" placeholder="两步验证密码" autocomplete="off">
+      <input id="twofa" type="password" class="input" style="max-width:260px" placeholder="两步验证密码" autocomplete="off">
       <button class="btn primary" id="btn2fa" onclick="verifyPassword()">提交</button>
     </div>
   </div>

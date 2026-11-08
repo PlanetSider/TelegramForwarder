@@ -184,7 +184,7 @@
     <div class="card">
       <div class="card-h"><h3>关键字</h3><span class="sub">{{ rule.keywords|length }} 条</span></div>
       {% if rule.keywords %}
-      <table>
+      <div class="table-scroll"><table>
         <thead><tr><th>关键字</th><th style="width:70px">正则</th><th style="width:80px">名单</th><th style="width:60px"></th></tr></thead>
         <tbody>
           {% for k in rule.keywords %}
@@ -196,7 +196,7 @@
           </tr>
           {% endfor %}
         </tbody>
-      </table>
+      </table></div>
       {% else %}
       <div class="empty">未设置关键字，所有消息都会进入后续过滤器</div>
       {% endif %}
@@ -219,7 +219,7 @@
       <div class="card-h"><h3>正则替换</h3>
         <span class="sub">{% if rule.is_replace %}{{ rule.replaces|length }} 条{% else %}未启用{% endif %}</span></div>
       {% if rule.replaces %}
-      <table>
+      <div class="table-scroll"><table>
         <thead><tr><th>匹配</th><th>替换为</th><th style="width:60px"></th></tr></thead>
         <tbody>
           {% for r in rule.replaces %}
@@ -230,7 +230,7 @@
           </tr>
           {% endfor %}
         </tbody>
-      </table>
+      </table></div>
       {% else %}
       <div class="empty">没有替换规则。正则 `.*` 会终止后续替换。</div>
       {% endif %}
@@ -417,7 +417,7 @@
       <span class="sub">一条规则可挂多个，逐个发送</span>
     </div>
     {% if rule.targets %}
-    <table>
+    <div class="table-scroll"><table>
       <thead><tr><th style="width:56px">ID</th><th style="width:120px">名称</th><th style="width:86px">类型</th><th>地址</th><th style="width:86px">媒体</th><th style="width:86px">状态</th><th style="width:130px"></th></tr></thead>
       <tbody>
         {% for p in rule.targets %}
@@ -441,7 +441,7 @@
         </tr>
         {% endfor %}
       </tbody>
-    </table>
+    </table></div>
     {% else %}
     <div class="card-b"><div class="empty">还没有配置转发目标</div></div>
     {% endif %}
@@ -513,7 +513,7 @@
     <div class="card-h"><h3>自定义正则</h3>
       <span class="sub">按优先级从小到大执行</span></div>
     {% if rule.rss.patterns %}
-    <table>
+    <div class="table-scroll"><table>
       <thead><tr><th style="width:70px">优先级</th><th style="width:80px">类型</th><th>正则</th></tr></thead>
       <tbody>
         {% for p in rule.rss.patterns %}
@@ -524,7 +524,7 @@
         </tr>
         {% endfor %}
       </tbody>
-    </table>
+    </table></div>
     {% else %}
     <div class="card-b"><div class="empty">未配置自定义正则</div></div>
     {% endif %}

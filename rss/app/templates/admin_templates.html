@@ -17,7 +17,7 @@
   </div>
   <div class="card-b">
     {% if templates_list %}
-    <table class="table-clean">
+    <div class="table-scroll"><table class="table-clean">
       <thead>
         <tr><th>名称</th><th style="width:110px">字段数</th><th style="width:110px">状态</th><th style="width:230px">操作</th></tr>
       </thead>
@@ -42,7 +42,7 @@
         </tr>
         {% endfor %}
       </tbody>
-    </table>
+    </table></div>
     {% else %}
     <div class="empty">还没有模板。点右上角「新建模板」建一个，或在已有规则里用「存为模板」。</div>
     {% endif %}

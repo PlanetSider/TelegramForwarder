@@ -17,7 +17,7 @@
   </div>
   <div class="card-b">
     {% if tasks %}
-    <table class="table">
+    <div class="table-scroll"><table class="table">
       <thead>
         <tr>
           <th style="width:150px">名称</th>
@@ -57,7 +57,7 @@
         </tr>
         {% endfor %}
       </tbody>
-    </table>
+    </table></div>
     {% else %}
     <div class="empty">还没有总结任务。点右上角「新增总结」创建第一个。</div>
     {% endif %}

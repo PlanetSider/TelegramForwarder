@@ -218,3 +218,191 @@ tbody tr:hover{background:#fafafa}
 /* 标签页：JS 通过 classList 切换 .on */
 .tabpane{display:none}
 .tabpane.on{display:block}
+
+
+/* ================= 移动端适配（v1.9） ================= */
+:root{
+  --tap:44px;
+  --z-topbar:20; --z-scrim:29; --z-sidebar:30; --z-modal:60; --z-toast:100;
+  --safe-b:env(safe-area-inset-bottom,0px);
+  --safe-l:env(safe-area-inset-left,0px);
+  --safe-r:env(safe-area-inset-right,0px);
+}
+
+/* 表格滚动容器 */
+.table-scroll{overflow-x:auto;overscroll-behavior-x:contain;-webkit-overflow-scrolling:touch}
+
+/* 弹窗：补齐原本缺失的 .modal */
+.modal:not(.fade){position:fixed;inset:0;z-index:var(--z-modal);display:none;align-items:center;
+       justify-content:center;background:rgba(0,0,0,.45);padding:16px}
+.modal:not(.fade)>.card,.modal:not(.fade)>div{max-height:calc(100vh - 32px);overflow:auto;margin:0}
+@supports (height:100dvh){.modal:not(.fade)>.card,.modal:not(.fade)>div{max-height:calc(100dvh - 32px)}}
+
+/* toast：兼容 admin.js 实际生成的 .toast-item */
+#toast .t,#toast .toast-item{background:#313131;color:#fff;padding:10px 16px;border-radius:var(--radius);
+  font-size:13px;box-shadow:0 8px 24px rgba(0,0,0,.18);animation:tin .18s ease;
+  transition:opacity .2s,transform .2s}
+#toast .toast-item.ok{background:#1a8c4a}
+#toast .toast-item.err{background:#c0392b}
+#toast .toast-item.warn{background:#b35900}
+#toast .toast-item.out{opacity:0;transform:translateY(6px)}
+
+/* 飞书页行式列表 */
+.frow{display:flex;align-items:center;gap:10px}
+.frow-head{font-size:12px;color:#8c8c8c;border-bottom:1px solid var(--line)}
+
+/* 工具类 */
+.wrap-anywhere{overflow-wrap:anywhere;word-break:break-word}
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;
+         clip:rect(0 0 0 0);white-space:nowrap;border:0}
+.nav-toggle{display:none}
+.scrim{position:fixed;inset:0;background:rgba(0,0,0,.42);z-index:var(--z-scrim);border:0;
+       opacity:0;transition:opacity .18s ease;display:none}
+body.menu-open .scrim{display:block;opacity:1}
+
+@media (min-width:769px){.only-mobile{display:none!important}}
+
+/* ---------------- ≤768px ---------------- */
+@media (max-width:768px){
+  body{font-size:15px}
+  .layout{min-height:100vh;min-height:100dvh}
+  .main{min-width:0}
+
+  /* 侧边栏 → 抽屉 */
+  .nav-toggle{display:inline-flex;align-items:center;justify-content:center;width:var(--tap);
+    height:var(--tap);margin-left:-10px;border-radius:var(--radius);font-size:19px;
+    color:var(--ink);flex:0 0 auto;background:none}
+  .nav-toggle:active{background:#f0f0f0}
+  .sidebar{position:fixed;inset:0 auto 0 0;z-index:var(--z-sidebar);width:min(84vw,300px);
+    height:100vh;height:100dvh;flex:none;transform:translateX(-102%);
+    transition:transform .2s ease;box-shadow:0 10px 30px rgba(0,0,0,.14);
+    overflow-y:auto;overscroll-behavior:contain;padding-bottom:calc(14px + var(--safe-b));
+    border-right:1px solid var(--line)}
+  body.menu-open .sidebar{transform:none}
+  body.menu-open{overflow:hidden}
+  .nav a{padding:12px 12px;min-height:var(--tap)}
+  .nav .nav-sub a{padding:10px 12px 10px 38px;min-height:38px}
+  .side-foot{margin-top:0;padding:14px 16px}
+
+  /* 顶栏 */
+  .topbar{height:52px;padding:0 14px;gap:10px}
+  .crumb{flex:1 1 auto;min-width:0;font-size:12.5px;white-space:nowrap;
+         overflow:hidden;text-overflow:ellipsis}
+  .topbar .btn.sm{padding:7px 10px;font-size:12.5px;flex:0 0 auto}
+  .avatar{width:28px;height:28px;font-size:12px;flex:0 0 auto}
+  .content{padding:16px 14px 40px}
+
+  /* 页头 */
+  .page-head{flex-direction:column;align-items:stretch;gap:10px;margin-bottom:14px}
+  .page-head h1{font-size:19px;line-height:1.35}
+  .page-head p{font-size:12.5px}
+  .page-head .actions{margin-left:0;justify-content:flex-end}
+  .page-head>.row{justify-content:flex-end}
+
+  /* 表格 */
+  .card-b:has(> table){overflow-x:auto;overscroll-behavior-x:contain}
+  .table-scroll>table{width:max-content;min-width:100%}
+  table{font-size:12.5px}
+  th{padding:9px 10px}
+  td{padding:9px 10px}
+  td .btn{margin:0 6px 6px 0}
+  td .btn:last-child{margin-right:0}
+
+  /* 按钮 */
+  .btn{min-height:var(--tap);padding:10px 14px}
+  .btn.sm,.btn-sm{padding:8px 11px;font-size:12.5px;min-height:38px}
+  .page-head .actions .btn{justify-content:center}
+
+  /* 表单：16px 防 iOS 聚焦放大 */
+  .input,.inline-input,.field input[type=text],.field input[type=number],
+  .field input[type=password],.field select,.field textarea,
+  input:not([type=checkbox]):not([type=radio]),select,textarea{font-size:16px}
+  .field input,.field select,.field textarea{min-height:var(--tap);padding:10px 12px}
+  .field .hint{font-size:12px;line-height:1.5}
+  .row{flex-wrap:wrap}
+  .row>.inline-input,.row>input.input{flex:1 1 100%;max-width:none!important}
+  .field .val{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+  .field .val>.input,.field .val>select,.field .val>input{flex:1 1 100%;
+    max-width:none!important;min-width:0!important}
+  .field .val>.hint{flex:1 1 100%;font-size:12px}
+  .field .val>input[type=number],.field .val>input[type=time]{flex:0 0 110px;min-width:110px}
+
+  /* 工具栏 */
+  .toolbar{gap:8px}
+  .toolbar .input,.toolbar select{flex:1 1 100%;min-width:0;width:100%}
+  .toolbar .btn{flex:0 0 auto}
+  .toolbar .spacer{display:none}
+
+  /* 弹窗 → 底部抽屉 */
+  .modal:not(.fade){padding:0;align-items:flex-end;justify-content:stretch}
+  .modal:not(.fade)>.card,.modal:not(.fade)>div{width:100%!important;max-width:100%!important;
+    max-height:92vh!important;max-height:92dvh!important;overflow:auto!important;
+    margin:0!important;border-radius:12px 12px 0 0!important;padding-bottom:var(--safe-b);
+    overscroll-behavior:contain}
+  .modal:not(.fade) .card-h{position:sticky;top:0;z-index:1;background:var(--panel);
+    border-bottom:1px solid var(--line-soft)}
+
+  /* 日志 */
+  .logbox{height:auto;max-height:58vh;max-height:58dvh;padding:10px 12px;font-size:12px}
+  .logline,.logbox .ln{flex-wrap:wrap;gap:0 8px;align-items:baseline}
+  .logbox .msg{flex:1 1 100%;word-break:break-word;white-space:pre-wrap}
+
+  /* tabs */
+  .tabs button{padding:11px 12px;min-height:var(--tap)}
+
+  /* 飞书行式表格 */
+  .frow{flex-wrap:wrap;gap:6px 10px!important;padding:8px 0}
+  .frow>div{width:auto!important;flex:1 1 100%!important;text-align:left!important;
+            white-space:normal!important}
+
+  .hide-mobile{display:none!important}
+  .full-mobile{width:100%!important;max-width:none!important}
+
+  #toast{left:12px;right:12px;bottom:calc(12px + var(--safe-b))}
+  #toast .t,#toast .toast-item{width:100%;text-align:center}
+}
+
+@media (max-width:480px){
+  .page-head .actions{display:grid;grid-template-columns:1fr 1fr;gap:8px;width:100%}
+  .page-head .actions .btn{justify-content:center}
+  .page-head .actions .btn:only-child{grid-column:1/-1}
+  .toolbar .btn{flex:1 1 100%;justify-content:center}
+}
+
+@media (max-height:520px){
+  .modal:not(.fade)>.card,.modal:not(.fade)>div{max-height:100vh!important;max-height:100dvh!important;
+    border-radius:0!important}
+}
+
+@media (hover:none){
+  .btn:hover{background:#fff;border-color:#d9d9d9}
+  .btn.primary:hover{background:var(--brand);border-color:var(--brand)}
+  .btn.ghost:hover{background:transparent;color:var(--muted)}
+  .btn.danger:hover{background:#fff}
+  .nav a:hover{background:transparent}
+  tbody tr:hover{background:transparent}
+}
+
+@media (prefers-reduced-motion:reduce){
+  .sidebar,.scrim{transition:none}
+}
+
+/* 内联定位的弹窗：移动端统一改为底部抽屉（需 !important 覆盖内联） */
+@media (max-width:768px){
+  #providerModal,#fwdModal,#tplModal,#botModal,#hookModal,#qrModal,#taskModal{
+    padding:0!important;align-items:flex-end!important;justify-content:stretch!important;
+    place-items:end stretch!important}
+  #providerModal>.card,#fwdModal>.card,#tplModal>.card,#botModal>.card,
+  #hookModal>.card,#qrModal>.card,#taskModal>.card,#taskModal>div{
+    width:100%!important;max-width:100%!important;max-height:92dvh!important;
+    overflow:auto!important;margin:0!important;border-radius:12px 12px 0 0!important;
+    padding-bottom:var(--safe-b)!important;overscroll-behavior:contain}
+  #providerModal .card-h,#fwdModal .card-h,#tplModal .card-h,#botModal .card-h,
+  #hookModal .card-h,#qrModal .card-h,#taskModal .card-h{
+    position:sticky;top:0;z-index:1;background:var(--panel);
+    border-bottom:1px solid var(--line-soft)}
+}
+@media (max-height:520px){
+  #providerModal>.card,#fwdModal>.card,#tplModal>.card,#botModal>.card,
+  #hookModal>.card,#qrModal>.card{max-height:100dvh!important;border-radius:0!important}
+}

@@ -48,7 +48,7 @@
       <div class="right"><a class="btn sm ghost" href="/admin/rules">全部</a></div>
     </div>
     {% if health %}
-    <table>
+    <div class="table-scroll"><table>
       <thead><tr><th>规则</th><th>方式</th><th>能力</th><th>状态</th></tr></thead>
       <tbody>
         {% for h in health %}
@@ -67,7 +67,7 @@
         </tr>
         {% endfor %}
       </tbody>
-    </table>
+    </table></div>
     {% else %}
     <div class="empty">还没有创建任何规则，去 <a href="/admin/rules" style="color:#0051c3">规则页</a> 看看</div>
     {% endif %}

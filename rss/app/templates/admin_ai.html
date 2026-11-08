@@ -26,7 +26,7 @@
     <span class="sub">共 {{ providers|length }} 个</span>
   </div>
   {% if providers %}
-  <table>
+  <div class="table-scroll"><table>
     <thead>
       <tr>
         <th style="width:150px">名称</th>
@@ -65,7 +65,7 @@
       </tr>
       {% endfor %}
     </tbody>
-  </table>
+  </table></div>
   {% else %}
   <div class="empty">还没有配置供应商。点右上角「添加供应商」开始。</div>
   {% endif %}

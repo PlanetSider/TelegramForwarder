@@ -162,8 +162,9 @@ def rule_detail(rule: ForwardRule) -> Dict[str, Any]:
         "feishu_bot": feishu_bot,
         "source": _chat_brief(rule.source_chat),
         "target": _chat_brief(rule.target_chat, "飞书推送"),
-        # 目标为空的规则只走推送通道，Telegram 专属的设置项在页面上不展示
-        "is_push_only": rule.target_chat_id is None,
+        # 只走推送的规则（目标为空，或显式开了「仅推送不转发」），
+        # Telegram 专属的设置项在页面上不展示
+        "is_push_only": rule.target_chat_id is None or bool(rule.enable_only_push),
         # 基础
         "enable_rule": bool(rule.enable_rule),
         "use_bot": bool(rule.use_bot),

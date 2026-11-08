@@ -17,7 +17,7 @@
 {% block content %}
 {% if rule.is_push_only %}
 <div class="note" style="margin-bottom:14px">
-  这条规则只走推送通道（没有 Telegram 目标），所以「处理模式、消息格式、链接预览、评论区按钮、仅推送不转发、定时总结、UFB 联动」这些只对 Telegram 生效的设置已隐藏。
+  这条规则只走推送通道（没有 Telegram 目标，或已开启「仅推送不转发」），所以「处理模式、消息格式、链接预览、评论区按钮、定时总结、UFB 联动」这些只对 Telegram 生效的设置已隐藏。要恢复发送到 Telegram，关掉下方的「仅推送不转发」或给规则选一个目标会话。
 </div>
 {% endif %}
 <div class="page-head">
@@ -421,13 +421,11 @@
         <label>启用推送</label>
         <div class="val">{{ sw('enable_push', rule.enable_push) }}</div>
       </div>
-      {% if not rule.is_push_only %}
       <div class="field">
         <label>仅推送不转发</label>
         <div class="val">{{ sw('enable_only_push', rule.enable_only_push) }}
           <span class="hint">开启后跳过 SenderFilter，消息只走推送</span></div>
       </div>
-      {% endif %}
     </div>
 
     {% if rule.push_channels %}

@@ -13,9 +13,10 @@ logger = logging.getLogger(__name__)
 # 界面上展示的思考模式，与 utils.ai_client 的 reasoning_effort 对应
 REASONING_OPTIONS = [
     ("", "跟随服务商默认"),
-    ("low", "轻（快）"),
-    ("medium", "中"),
-    ("high", "深（慢）"),
+    ("minimal", "最小（minimal）"),
+    ("low", "低（low）"),
+    ("medium", "中（medium）"),
+    ("high", "高（high）"),
 ]
 
 

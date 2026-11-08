@@ -73,7 +73,7 @@
 
 <!-- ---------------------------------------------------------- 编辑弹窗 -->
 <div id="providerModal" class="hide"
-     style="position:fixed;inset:0;background:rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center;z-index:60">
+     style="position:fixed;inset:0;background:rgba(0,0,0,.35);display:none;align-items:center;justify-content:center;z-index:60">
   <div class="card" style="width:520px;max-width:92vw;margin:0">
     <div class="card-h">
       <h3 id="providerTitle">添加供应商</h3>
@@ -164,7 +164,7 @@
     var btn = document.getElementById('pvSave');
     btn.disabled = true;
     window.api('POST', url, body)
-      .then(function () { window.toast('已保存', 'ok'); setTimeout(function () { location.reload(); }, 500); })
+      .then(function () { window.toast('已保存', 'ok'); closeProvider(); setTimeout(function () { location.reload(); }, 600); })
       .catch(function (e) { window.toast(e.message, 'error'); btn.disabled = false; });
   };
 

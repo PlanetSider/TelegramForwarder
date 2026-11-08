@@ -450,7 +450,7 @@
       <div class="toolbar" style="margin:0">
         <input class="input" id="new-push-name" style="width:150px" placeholder="名称（可选）">
         <input class="input" id="new-push-url" style="flex:1"
-               placeholder="https://open.feishu.cn/open-apis/bot/v2/hook/xxx   或   lark://token?secret=xxx">
+               placeholder="https://open.feishu.cn/open-apis/bot/v2/hook/xxx">
         <select class="input" id="new-push-mode" style="width:120px">
           <option value="Single">单个发送</option>
           <option value="Multiple">合并发送</option>
@@ -464,7 +464,7 @@
     飞书多机器人：为每个群添加一个自定义机器人，把 webhook 依次加到这里即可，
     某个群的消息只会进入它自己那条地址；一条规则挂多个地址时，每条都会收到同一份内容。
     名称可留空，填了会在概览和各列表里显示，方便区分是哪个群。
-    也支持 <code class="mono">lark://&lt;token&gt;?secret=xxx</code> 简写指向国际版 Lark。
+    只支持飞书开放平台的群机器人 webhook 地址。
   </div>
 </div>
 
@@ -598,7 +598,9 @@
 <script>
 async function pickModel() {
   try {
-    const r = await window.api('POST', '/admin/api/ai/models', {});
+    const pidEl = document.querySelector('[data-field="ai_provider_id"]');
+    const body = pidEl && pidEl.value ? { provider_id: Number(pidEl.value) } : {};
+    const r = await window.api('POST', '/admin/api/ai/models', body);
     if (!r || !r.ok) { toast((r && r.error) || '获取模型失败', 'err'); return; }
     const list = r.models || [];
     if (!list.length) { toast('接口没有返回任何模型', 'err'); return; }

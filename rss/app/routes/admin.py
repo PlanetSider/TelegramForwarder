@@ -160,12 +160,14 @@ async def admin_settings(request: Request, group: str, user=Depends(get_current_
         return RedirectResponse(url=f"/admin/settings/{app_config.GROUPS[0][0]}", status_code=302)
 
     providers = []
+    reasoning_options = []
     session = get_session()
     try:
         rows = app_config.as_display(session)
         if group == "behavior":
             from rss.app.services import ai_service
             providers = ai_service.provider_rows(session)
+            reasoning_options = ai_service.REASONING_OPTIONS
     finally:
         session.close()
 
@@ -196,6 +198,7 @@ async def admin_settings(request: Request, group: str, user=Depends(get_current_
              view=view,
              ai_models=ai_models,
              providers=providers,
+             reasoning_options=reasoning_options,
              configs=configs),
     )
 
@@ -731,14 +734,32 @@ async def admin_api_ai_models(request: Request, user=Depends(get_current_user)):
         return _fail("请先登录", 401)
 
     body = await _json_body(request)
-    session = get_session()
-    try:
-        cfg = app_config.get_current(session)
-    finally:
-        session.close()
+    base_url = (body.get("base_url") or "").strip()
+    api_key = (body.get("api_key") or "").strip()
 
-    base_url = (body.get("base_url") or cfg.get("AI_BASE_URL") or "").strip()
-    api_key = (body.get("api_key") or cfg.get("AI_API_KEY") or "").strip()
+    # 没显式传地址/密钥时，优先用指定供应商，其次默认供应商，最后回落旧配置
+    if not base_url and not api_key:
+        from rss.app.services import ai_service
+        session = get_session()
+        try:
+            provider = None
+            provider_id = body.get("provider_id")
+            if provider_id not in (None, ""):
+                try:
+                    provider = ai_service.get_provider(session, int(provider_id))
+                except (TypeError, ValueError):
+                    provider = None
+            if provider is None:
+                provider = ai_service.get_default_provider(session)
+            if provider is not None:
+                base_url = (provider.base_url or "").strip()
+                api_key = (provider.api_key or "").strip()
+            if not base_url and not api_key:
+                cfg = app_config.get_current(session)
+                base_url = (cfg.get("AI_BASE_URL") or "").strip()
+                api_key = (cfg.get("AI_API_KEY") or "").strip()
+        finally:
+            session.close()
 
     try:
         models = await ai_client.list_models(base_url, api_key)

@@ -288,6 +288,8 @@ async def _handle_create_rule(request: web.Request) -> web.Response:
             # 跨通道推送时对方看不到原消息上下文，默认带上发送人与时间
             rule.is_original_sender = True
             rule.is_original_time = True
+            # 默认启用公共黑名单，避免规则建好后对广告类消息无感
+            rule.use_global_blacklist = True
 
             if bot_id_int:
                 rule.feishu_bot_id = bot_id_int

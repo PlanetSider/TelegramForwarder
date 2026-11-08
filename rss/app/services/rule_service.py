@@ -414,7 +414,7 @@ def _enum_maps():
     return {
         "forward_mode": ForwardMode,
         "add_mode": AddMode,
-        "extension_filter_mode": ForwardMode,
+        "extension_filter_mode": AddMode,
         "message_mode": MessageMode,
         "is_preview": PreviewMode,
         "handle_mode": HandleMode,

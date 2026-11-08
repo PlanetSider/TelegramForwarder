@@ -134,7 +134,7 @@
       </div>
 
       <div style="margin-top:16px">
-        {% for brand, label in [('feishu', '飞书群机器人'), ('lark', 'Lark 群机器人')] %}
+        {% for brand, label in [('feishu', '飞书群机器人')] %}
         {% set items = channel_groups.get(brand) or [] %}
         <div style="margin-top:10px">
           <div style="font-size:12px;color:#6b6b6b">{{ label }}

@@ -390,12 +390,20 @@ async def admin_api_create_rule(request: Request,
     if not source or not target:
         return _fail("源与目标都必须填写")
 
+    # 飞书相关字段必须一并透传给主进程，否则推送目标会被丢弃，
+    # 规则会退化成「源 → 源」的 Telegram 自绑规则。
+    payload = {"source": source, "target": target}
+    for key in ("feishu_bot_id", "feishu_chat_id", "feishu_webhook_id"):
+        value = body.get(key)
+        if value not in (None, ""):
+            payload[key] = value
+
     try:
         async with bridge_client._new_client(20.0) as client:  # noqa: SLF001
             resp = await client.post(
                 f"{bridge_client._BASE}/internal/rules",  # noqa: SLF001
                 headers={"X-Bridge-Token": bridge_client._token() or ""},  # noqa: SLF001
-                json={"source": source, "target": target},
+                json=payload,
             )
             data = resp.json()
     except Exception as exc:

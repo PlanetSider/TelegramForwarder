@@ -8,7 +8,7 @@ from handlers.button.button_helpers import create_media_size_buttons,create_medi
 from models.models import ForwardRule, MediaTypes, MediaExtensions, RuleSync, Keyword, ReplaceRule
 from enums.enums import AddMode
 import logging
-from utils.common import get_media_settings_text, get_db_ops
+from utils.common import get_media_settings_text, get_db_ops, target_display
 from models.models import get_session
 from models.db_operations import DBOperations
 from handlers.button.button_helpers import create_other_settings_buttons
@@ -112,7 +112,7 @@ async def create_copy_rule_buttons(rule_id, page=0):
             target_chat = rule.target_chat
 
             # 创建按钮文本
-            button_text = f"{rule.id} {source_chat.name}->{target_chat.name}"
+            button_text = f"{rule.id} {source_chat.name}->{target_display(rule)}"
 
             # 创建回调数据：perform_copy_rule:源规则ID:目标规则ID
             callback_data = f"perform_copy_rule:{source_rule_id}:{rule.id}"
@@ -620,7 +620,7 @@ async def create_rule_selection_buttons(rule_id, page=0, callback_action="perfor
             target_chat = rule.target_chat
 
             # 创建按钮文本
-            button_text = f"{rule.id} {source_chat.name}->{target_chat.name}"
+            button_text = f"{rule.id} {source_chat.name}->{target_display(rule)}"
 
             # 创建回调数据：callback_action:源规则ID:目标规则ID
             callback_data = f"{callback_action}:{source_rule_id}:{rule.id}"

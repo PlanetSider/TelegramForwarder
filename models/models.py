@@ -27,7 +27,9 @@ class ForwardRule(Base):
 
     id = Column(Integer, primary_key=True)
     source_chat_id = Column(Integer, ForeignKey('chats.id'), nullable=False)
-    target_chat_id = Column(Integer, ForeignKey('chats.id'), nullable=False)
+    # 目标会话可以为空：为空表示这条规则不往 Telegram 转发，
+    # 只把消息送到推送目标（飞书 / ntfy / 任意 apprise 通道）。
+    target_chat_id = Column(Integer, ForeignKey('chats.id'), nullable=True)
     forward_mode = Column(Enum(ForwardMode), nullable=False, default=ForwardMode.BLACKLIST)
     use_bot = Column(Boolean, default=True)
     message_mode = Column(Enum(MessageMode), nullable=False, default=MessageMode.MARKDOWN)
@@ -299,12 +301,59 @@ class User(Base):
     username = Column(String, nullable=False)  
     password = Column(String, nullable=False)  
 
+def _ensure_nullable_target_chat(engine, inspector, existing_tables):
+    """把 forward_rules.target_chat_id 从 NOT NULL 改成可空。
+
+    早期版本要求每条规则都必须有 Telegram 目标会话，导致「只推送到飞书 / 其他
+    推送通道」的规则建不出来。SQLite 不支持 ALTER COLUMN，只能重建表。
+    """
+    if 'forward_rules' not in existing_tables:
+        return
+    try:
+        columns = {c['name']: c for c in inspector.get_columns('forward_rules')}
+    except Exception:
+        return
+    target = columns.get('target_chat_id')
+    if target is None or target.get('nullable'):
+        return
+
+    logging.info("迁移 forward_rules：target_chat_id 改为可空（重建表）...")
+    legacy = 'forward_rules_target_nullable_backup'
+    with engine.connect() as conn:
+        conn.exec_driver_sql("PRAGMA foreign_keys=OFF")
+        # 关闭「重命名时自动改写子表外键引用」，否则 keywords 等会指向备份表
+        conn.exec_driver_sql("PRAGMA legacy_alter_table=ON")
+        conn.exec_driver_sql(f"DROP TABLE IF EXISTS {legacy}")
+        conn.exec_driver_sql(f"ALTER TABLE forward_rules RENAME TO {legacy}")
+        conn.commit()
+
+    ForwardRule.__table__.create(engine)
+
+    old_cols = set(columns)
+    new_cols = [c.name for c in ForwardRule.__table__.columns]
+    common = [c for c in new_cols if c in old_cols]
+    cols_sql = ", ".join(f'"{c}"' for c in common)
+    with engine.connect() as conn:
+        conn.exec_driver_sql(
+            f"INSERT INTO forward_rules ({cols_sql}) SELECT {cols_sql} FROM {legacy}"
+        )
+        conn.exec_driver_sql(f"DROP TABLE {legacy}")
+        conn.exec_driver_sql("PRAGMA foreign_keys=ON")
+        conn.exec_driver_sql("PRAGMA legacy_alter_table=OFF")
+        conn.commit()
+    logging.info("迁移完成：forward_rules 已重建，保留 %s 列", len(common))
+
+
 def migrate_db(engine):
     """数据库迁移函数，确保新字段的添加"""
     inspector = inspect(engine)
     
     # 获取当前数据库中所有表
     existing_tables = inspector.get_table_names()
+
+    # 目标会话改为可空：需要重建 forward_rules，必须最先执行
+    _ensure_nullable_target_chat(engine, inspector, existing_tables)
+    existing_tables = inspect(engine).get_table_names()
     
     # 连接数据库
     connection = engine.connect()

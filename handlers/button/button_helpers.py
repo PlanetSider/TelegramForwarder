@@ -2,7 +2,7 @@ from telethon import Button
 from utils.constants import *
 from utils.settings import load_summary_times, load_ai_models, load_delay_times, load_max_media_size, load_media_extensions
 from handlers.button.settings_manager import AI_SETTINGS, AI_MODELS, MEDIA_SETTINGS,OTHER_SETTINGS, PUSH_SETTINGS
-from utils.common import get_db_ops
+from utils.common import get_db_ops, target_display
 from models.models import get_session
 from sqlalchemy import text
 from models.models import ForwardRule
@@ -569,7 +569,7 @@ async def create_sync_rule_buttons(rule_id, page=0):
             is_synced = rule.id in synced_rule_ids
             
             # 创建按钮文本
-            button_text = f"{'✅ ' if is_synced else ''}{rule.id} {source_chat.name}->{target_chat.name}"
+            button_text = f"{'✅ ' if is_synced else ''}{rule.id} {source_chat.name}->{target_display(rule)}"
             
             # 创建回调数据：toggle_rule_sync:当前规则ID:目标规则ID:当前页码
             callback_data = f"toggle_rule_sync:{rule_id}:{rule.id}:{page}"

@@ -15,6 +15,19 @@ from utils.constants import AI_SETTINGS_TEXT,MEDIA_SETTINGS_TEXT
 
 logger = logging.getLogger(__name__)
 
+
+def target_display(rule) -> str:
+    """规则目标的可读名称：Telegram 会话名，或推送通道摘要。"""
+    chat = getattr(rule, "target_chat", None)
+    if chat is not None:
+        return getattr(chat, "name", None) or str(getattr(chat, "telegram_chat_id", "") or "")
+    try:
+        from utils.channels import describe_summary
+        return describe_summary(rule)
+    except Exception:
+        return "推送通道"
+
+
 async def get_main_module():
     """获取 main 模块"""
     try:

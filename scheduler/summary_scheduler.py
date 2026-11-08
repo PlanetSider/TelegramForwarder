@@ -136,6 +136,9 @@ class SummaryScheduler:
 
             try:
                 source_chat_id = int(rule.source_chat.telegram_chat_id)
+                if rule.target_chat is None:
+                    logger.warning("总结任务跳过：规则 %s 没有 Telegram 目标会话", rule_id)
+                    return
                 target_chat_id = int(rule.target_chat.telegram_chat_id)
 
                 messages = []
@@ -326,7 +329,7 @@ class SummaryScheduler:
             logger.info(f"找到 {len(rules)} 个启用了总结功能的规则")
 
             for rule in rules:
-                logger.info(f"正在为规则 {rule.id} ({rule.source_chat.name} -> {rule.target_chat.name}) 创建调度任务")
+                logger.info(f"正在为规则 {rule.id} ({rule.source_chat.name} -> {rule.target_chat.name if rule.target_chat else '推送通道'}) 创建调度任务")
                 logger.info(f"总结时间: {rule.summary_time}")
 
                 # 计算下一次执行时间

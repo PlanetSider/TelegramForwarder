@@ -216,18 +216,21 @@ async def _handle_create_rule(request: web.Request) -> web.Response:
     feishu_bot_id = body.get("feishu_bot_id")
     feishu_chat_id = (body.get("feishu_chat_id") or "").strip()
     feishu_webhook_id = body.get("feishu_webhook_id")
-    if (feishu_bot_id or feishu_webhook_id) and not target_text:
-        # 目标选了飞书机器人 / 群机器人时，Telegram 侧不再转发到别的会话
-        target_text = source_text
-    if not source_text or not target_text:
-        return _json_error("源与目标都必须填写")
+    is_push = bool(feishu_bot_id or feishu_webhook_id)
+    if not source_text:
+        return _json_error("源会话必须填写")
+    if not target_text and not is_push:
+        return _json_error("请选择 Telegram 目标或推送通道")
 
     source_entity, source_err = await _resolve_entity(user_client, source_text)
     if source_entity is None:
         return _json_error(f"源会话解析失败：{source_err}")
-    target_entity, target_err = await _resolve_entity(user_client, target_text)
-    if target_entity is None:
-        return _json_error(f"目标会话解析失败：{target_err}")
+
+    target_entity = None
+    if target_text:
+        target_entity, target_err = await _resolve_entity(user_client, target_text)
+        if target_entity is None:
+            return _json_error(f"目标会话解析失败：{target_err}")
 
     from models.models import get_session, Chat, ForwardRule, FeishuWebhook, PushConfig
     from enums.enums import ForwardMode, AddMode
@@ -246,7 +249,6 @@ async def _handle_create_rule(request: web.Request) -> web.Response:
             return chat
 
         source_chat = _upsert(source_entity)
-        is_push = bool(feishu_bot_id or feishu_webhook_id)
 
         hook = None
         bot_id_int = None
@@ -265,18 +267,16 @@ async def _handle_create_rule(request: web.Request) -> web.Response:
                 return _json_error("群机器人不存在", 404)
 
         if is_push:
-            # 推送规则：Telegram 侧不复制到别的会话，target 仍指向源
-            #（forward_rules.target_chat_id 是 NOT NULL，不能留空），
-            # 发送阶段靠 enable_only_push 让发送器直接跳过，只走推送。
-            # 同一条源复用同一条自绑规则，多个推送目标挂在 PushConfig 上，
+            # 推送规则：不设 Telegram 目标，消息只走推送通道。
+            # 同一条源复用同一条「无目标」规则，多个推送目标挂在 PushConfig 上，
             # 这样 (source, target) 的唯一约束不会挡，也不会重复建规则。
             rule = (session.query(ForwardRule)
                     .filter(ForwardRule.source_chat_id == source_chat.id,
-                            ForwardRule.target_chat_id == source_chat.id).first())
+                            ForwardRule.target_chat_id.is_(None)).first())
             if rule is None:
                 rule = ForwardRule(
                     source_chat_id=source_chat.id,
-                    target_chat_id=source_chat.id,
+                    target_chat_id=None,
                     forward_mode=ForwardMode.BLACKLIST,
                     add_mode=AddMode.BLACKLIST,
                 )
@@ -285,7 +285,7 @@ async def _handle_create_rule(request: web.Request) -> web.Response:
 
             rule.use_bot = True
             rule.enable_push = True
-            rule.enable_only_push = True
+            rule.enable_only_push = False
             rule.forward_mode = ForwardMode.BLACKLIST
             # 跨通道推送时对方看不到原消息上下文，默认带上发送人与时间
             rule.is_original_sender = True

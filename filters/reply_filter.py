@@ -41,6 +41,9 @@ class ReplyFilter(BaseFilter):
             
             # 获取目标聊天信息
             rule = context.rule
+            if rule.target_chat_id is None or rule.target_chat is None:
+                # 没有 Telegram 目标就没有「转发后的消息」可挂按钮
+                return True
             target_chat = rule.target_chat
             target_chat_id = int(target_chat.telegram_chat_id)
             

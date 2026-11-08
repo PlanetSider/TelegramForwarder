@@ -219,7 +219,8 @@ async def _ai_handle(message: str, rule, image_files=None) -> str:
                 
                 # 获取源聊天和目标聊天ID
                 source_chat_id = int(rule.source_chat.telegram_chat_id)
-                target_chat_id = int(rule.target_chat.telegram_chat_id)
+                target_chat_id = (int(rule.target_chat.telegram_chat_id)
+                                  if rule.target_chat is not None else None)
                 
                 # 处理源聊天的消息获取
                 if source_context_match:
@@ -235,12 +236,18 @@ async def _ai_handle(message: str, rule, image_files=None) -> str:
                 # 处理目标聊天的消息获取
                 if target_context_match:
                     count = int(target_context_match.group(1))
-                    chat_history = await _get_chat_messages(client, target_chat_id, count=count)
+                    if target_chat_id is None:
+                        chat_history = "（未设置 Telegram 目标会话）"
+                    else:
+                        chat_history = await _get_chat_messages(client, target_chat_id, count=count)
                     prompt = prompt.replace(target_context_match.group(0), chat_history)
-                    
+
                 if target_time_match:
                     minutes = int(target_time_match.group(1))
-                    chat_history = await _get_chat_messages(client, target_chat_id, minutes=minutes)
+                    if target_chat_id is None:
+                        chat_history = "（未设置 Telegram 目标会话）"
+                    else:
+                        chat_history = await _get_chat_messages(client, target_chat_id, minutes=minutes)
                     prompt = prompt.replace(target_time_match.group(0), chat_history)
             
             # 替换消息占位符

@@ -4,6 +4,7 @@ from enums.enums import ForwardMode, MessageMode, PreviewMode, AddMode, HandleMo
 from models.models import get_session
 from telethon import Button
 from utils.constants import RSS_ENABLED, UFB_ENABLED
+from utils.common import target_display
 
 AI_MODELS = load_ai_models()
 
@@ -448,7 +449,7 @@ async def create_settings_text(rule):
     text = (
         "📋 管理转发规则\n\n"
         f"规则ID: `{rule.id}`\n" 
-        f"{rule.source_chat.name} --> {rule.target_chat.name}"
+        f"{rule.source_chat.name} --> {target_display(rule)}"
     )
     return text
 
@@ -460,6 +461,9 @@ async def create_buttons(rule):
     session = get_session()
     try:
         target_chat = rule.target_chat
+        if target_chat is None:
+            # 目标是推送通道时没有目标会话，改用源聊天承载「当前规则」状态
+            target_chat = rule.source_chat
         current_add_id = target_chat.current_add_id
         source_chat = rule.source_chat
 

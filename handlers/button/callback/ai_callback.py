@@ -8,7 +8,7 @@ from handlers.button.button_helpers import create_ai_settings_buttons, create_mo
 from models.models import ForwardRule, RuleSync
 from telethon import Button
 import logging
-from utils.common import get_main_module, get_ai_settings_text
+from utils.common import get_main_module, get_ai_settings_text, target_display
 from utils.common import is_admin
 from utils.state_utils import cancel_state_after_timeout
 from scheduler.summary_scheduler import SummaryScheduler
@@ -343,7 +343,7 @@ async def callback_summary_now(event, rule_id, session, message, data):
         await event.answer("开始执行总结，请稍候...")
         
         await message.edit(
-            f"正在为规则 {rule_id}（{rule.source_chat.name} -> {rule.target_chat.name}）生成总结...\n"
+            f"正在为规则 {rule_id}（{rule.source_chat.name} -> {target_display(rule)}）生成总结...\n"
             f"处理需要一定时间，请耐心等待。",
             buttons=[[Button.inline("返回", f"ai_settings:{rule_id}")]]
         )

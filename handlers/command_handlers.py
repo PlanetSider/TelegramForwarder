@@ -249,7 +249,7 @@ async def handle_settings_command(event, command, parts):
         # 添加日志
         logger.info(f'找到 {len(rules)} 条转发规则')
         for rule in rules:
-            logger.info(f'规则ID: {rule.id}, 源聊天: {rule.source_chat.name}, 目标聊天: {rule.target_chat.name}')
+            logger.info(f'规则ID: {rule.id}, 源聊天: {rule.source_chat.name}, 目标: {target_display(rule)}')
 
         if not rules:
             await async_delete_user_message(event.client, event.message.chat_id, event.message.id, 0)
@@ -2065,12 +2065,14 @@ async def handle_list_rule_command(event, command, parts):
             # 获取源聊天和目标聊天的名称
             source_chat = rule.source_chat
             target_chat = rule.target_chat
+            target_line = (f'{target_chat.name} ({target_chat.telegram_chat_id})'
+                           if target_chat else target_display(rule))
 
             # 构建规则描述
             rule_desc = (
                 f'<b>ID: {rule.id}</b>\n'
                 f'<blockquote>来源: {source_chat.name} ({source_chat.telegram_chat_id})\n'
-                f'目标: {target_chat.name} ({target_chat.telegram_chat_id})\n'
+                f'目标: {target_line}\n'
                 '</blockquote>'
             )
             message_parts.append(rule_desc)

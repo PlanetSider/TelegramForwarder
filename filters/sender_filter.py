@@ -32,7 +32,12 @@ class SenderFilter(BaseFilter):
         if rule.enable_only_push:
             logger.info('只转发到推送配置，跳过发送')
             return True
-            
+
+        # 目标会话为空 = 这条规则不发 Telegram，只把消息送到推送目标
+        if rule.target_chat_id is None or rule.target_chat is None:
+            logger.info('规则 %s 未设置 Telegram 目标，跳过 Telegram 发送', rule.id)
+            return True
+
         # 获取目标聊天信息
         target_chat = rule.target_chat
         target_chat_id = int(target_chat.telegram_chat_id)

@@ -698,9 +698,10 @@ def list_feishu_channels(session) -> List[Dict[str, Any]]:
         if not target:
             continue
         rule = session.query(ForwardRule).get(row.rule_id)
-        if rule and rule.source_chat and rule.target_chat:
-            rule_name = f"{rule.source_chat.name or rule.source_chat.telegram_chat_id} → " \
-                        f"{rule.target_chat.name or rule.target_chat.telegram_chat_id}"
+        if rule and rule.source_chat:
+            src = rule.source_chat.name or rule.source_chat.telegram_chat_id
+            dst = (rule.target_chat.name or rule.target_chat.telegram_chat_id) if rule.target_chat else "推送通道"
+            rule_name = f"{src} → {dst}"
         else:
             rule_name = f"规则 #{row.rule_id}"
         items.append({

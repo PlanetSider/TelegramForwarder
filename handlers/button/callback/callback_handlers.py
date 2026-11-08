@@ -11,7 +11,7 @@ import logging
 import aiohttp
 from utils.constants import RSS_HOST, RSS_PORT
 from utils.auto_delete import respond_and_delete,reply_and_delete
-from utils.common import check_and_clean_chats
+from utils.common import check_and_clean_chats, target_display
 from handlers.button.button_helpers import create_sync_rule_buttons,create_other_settings_buttons
 
 logger = logging.getLogger(__name__)
@@ -446,7 +446,7 @@ async def callback_page_rule(event, page_str, session, message, data):
             rule_desc = (
                 f'<b>ID: {rule.id}</b>\n'
                 f'<blockquote>来源: {source_chat.name} ({source_chat.telegram_chat_id})\n'
-                f'目标: {target_chat.name} ({target_chat.telegram_chat_id})\n'
+                f'目标: {target_display(rule)}\n'
                 '</blockquote>'
             )
             message_parts.append(rule_desc)

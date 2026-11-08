@@ -36,6 +36,9 @@ async def process_forward_rule(client, event, chat_id, rule):
     logger.info(f'最终决定: {"转发" if should_forward else "不转发"}')
     
     if should_forward:
+        if rule.target_chat_id is None or rule.target_chat is None:
+            logger.info(f'规则 {rule.id} 未设置 Telegram 目标，用户模式跳过转发')
+            return
         target_chat = rule.target_chat
         target_chat_id = int(target_chat.telegram_chat_id)
         

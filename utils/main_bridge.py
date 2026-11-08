@@ -232,7 +232,7 @@ async def _handle_create_rule(request: web.Request) -> web.Response:
         if target_entity is None:
             return _json_error(f"目标会话解析失败：{target_err}")
 
-    from models.models import get_session, Chat, ForwardRule, FeishuWebhook, PushConfig
+    from models.models import get_session, Chat, ForwardRule, FeishuWebhook, ForwardTarget
     from enums.enums import ForwardMode, AddMode
 
     session = get_session()
@@ -268,7 +268,7 @@ async def _handle_create_rule(request: web.Request) -> web.Response:
 
         if is_push:
             # 推送规则：不设 Telegram 目标，消息只走推送通道。
-            # 同一条源复用同一条「无目标」规则，多个推送目标挂在 PushConfig 上，
+            # 同一条源复用同一条「无目标」规则，多个推送目标挂在 ForwardTarget 上，
             # 这样 (source, target) 的唯一约束不会挡，也不会重复建规则。
             rule = (session.query(ForwardRule)
                     .filter(ForwardRule.source_chat_id == source_chat.id,
@@ -284,8 +284,6 @@ async def _handle_create_rule(request: web.Request) -> web.Response:
                 session.flush()
 
             rule.use_bot = True
-            rule.enable_push = True
-            rule.enable_only_push = False
             rule.forward_mode = ForwardMode.BLACKLIST
             # 跨通道推送时对方看不到原消息上下文，默认带上发送人与时间
             rule.is_original_sender = True
@@ -295,17 +293,17 @@ async def _handle_create_rule(request: web.Request) -> web.Response:
                 rule.feishu_bot_id = bot_id_int
                 rule.feishu_chat_id = feishu_chat_id or None
             else:
-                dup = (session.query(PushConfig)
-                       .filter(PushConfig.rule_id == rule.id,
-                               PushConfig.push_channel == hook.webhook_url).first())
+                dup = (session.query(ForwardTarget)
+                       .filter(ForwardTarget.rule_id == rule.id,
+                               ForwardTarget.address == hook.webhook_url).first())
                 if dup is not None:
                     session.commit()
                     return web.json_response({"ok": True, "rule_id": rule.id,
                                               "reused": True})
-                session.add(PushConfig(rule_id=rule.id,
+                session.add(ForwardTarget(rule_id=rule.id,
                                        name=hook.name,
-                                       push_channel=hook.webhook_url,
-                                       enable_push_channel=True))
+                                       address=hook.webhook_url,
+                                       enabled=True))
         else:
             target_chat = _upsert(target_entity)
 

@@ -8,7 +8,7 @@ Telegram 转发上的附加动作，所以必须靠 `enable_only_push` 把主出
 * Telegram 目标：可选，0 或 1 个（`target_chat_id` 为空表示不发 Telegram）
 * 推送目标：0 到 N 个（飞书群机器人 / 飞书应用机器人 / 任意 apprise 地址）
 
-发送侧只关心「有没有 Telegram 目标」，推送侧自己读 `PushConfig`。
+发送侧只关心「有没有 Telegram 目标」，推送侧自己读 `ForwardTarget`。
 这样就不需要 `enable_only_push` 来倒转了——目标为空自然就是「只推送」。
 """
 import logging
@@ -54,10 +54,10 @@ def telegram_target_label(rule) -> str:
     return f"Telegram · {name}" if name else "Telegram"
 
 
-def _rule_push_configs(rule) -> List[Any]:
+def _rule_forward_targets(rule) -> List[Any]:
     """取规则下的全部推送地址。
 
-    `ForwardRule.push_config` 在模型里是 uselist=False（只反射第一条），
+    `ForwardRule.delivery_target` 在模型里是 uselist=False（只反射第一条），
     一条规则挂多个地址时必须走 session 查询。
     """
     state = getattr(rule, "_sa_instance_state", None)
@@ -65,10 +65,10 @@ def _rule_push_configs(rule) -> List[Any]:
     if session is None:
         return []
     try:
-        from models.models import PushConfig
-        return (session.query(PushConfig)
-                .filter(PushConfig.rule_id == rule.id,
-                        PushConfig.enable_push_channel == True)
+        from models.models import ForwardTarget
+        return (session.query(ForwardTarget)
+                .filter(ForwardTarget.rule_id == rule.id,
+                        ForwardTarget.enabled == True)
                 .all())
     except Exception:
         logger.debug("读取推送配置失败", exc_info=True)
@@ -87,8 +87,8 @@ def describe_targets(rule) -> List[Target]:
     if bot_id:
         targets.append(Target(FEISHU_BOT, "飞书应用机器人", bot_id))
 
-    for push in _rule_push_configs(rule):
-        url = getattr(push, "push_channel", "") or ""
+    for push in _rule_forward_targets(rule):
+        url = getattr(push, "address", "") or ""
         name = (getattr(push, "name", "") or "").strip()
         kind = APPRISE
         label = name or "推送地址"
@@ -122,8 +122,8 @@ def route_kind(rule) -> str:
     target_id = getattr(rule, "target_chat_id", None)
     if source_id and source_id == target_id:
         return "same_group"
-    has_push = bool(getattr(rule, "enable_push", False) or getattr(rule, "feishu_bot_id", None))
-    return "cross_channel" if has_push else "cross_group"
+    has_target = getattr(rule, "target_chat_id", None) is None or getattr(rule, "feishu_bot_id", None)
+    return "cross_channel" if has_target else "cross_group"
 
 
 ROUTE_LABELS = {

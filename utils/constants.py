@@ -105,8 +105,8 @@ AI_SETTINGS_TEXT = """
 MEDIA_SETTINGS_TEXT = """
 媒体设置：
 """
-PUSH_SETTINGS_TEXT = """
-推送设置：
+TARGET_SETTINGS_TEXT = """
+转发目标：
 支持 Apprise 全部格式，详见 https://github.com/caronc/apprise/wiki
 如 `ntfy://ntfy.sh/你的主题名`
 

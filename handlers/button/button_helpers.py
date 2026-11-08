@@ -1,7 +1,7 @@
 from telethon import Button
 from utils.constants import *
 from utils.settings import load_summary_times, load_ai_models, load_delay_times, load_max_media_size, load_media_extensions
-from handlers.button.settings_manager import AI_SETTINGS, AI_MODELS, MEDIA_SETTINGS,OTHER_SETTINGS, PUSH_SETTINGS
+from handlers.button.settings_manager import AI_SETTINGS, AI_MODELS, MEDIA_SETTINGS,OTHER_SETTINGS, TARGET_SETTINGS
 from utils.common import get_db_ops, target_display
 from models.models import get_session
 from sqlalchemy import text
@@ -609,7 +609,7 @@ async def create_sync_rule_buttons(rule_id, page=0):
     
     return buttons
 
-async def create_push_settings_buttons(rule_id, page=0):
+async def create_target_settings_buttons(rule_id, page=0):
     """创建推送设置按钮菜单，支持分页
     
     Args:
@@ -634,35 +634,19 @@ async def create_push_settings_buttons(rule_id, page=0):
             return buttons
         
         
-        # 添加"启用推送"按钮
+        # 添加「添加转发目标」按钮
         buttons.append([
             Button.inline(
-                f"{'✅ ' if rule.enable_push else ''}{PUSH_SETTINGS['enable_push_channel']['display_name']}", 
-                f"{PUSH_SETTINGS['enable_push_channel']['toggle_action']}:{rule_id}"
-            )
-        ])
-        
-        # 添加"只转发到推送配置"按钮
-        buttons.append([
-            Button.inline(
-                f"{'✅ ' if rule.enable_only_push else ''}{PUSH_SETTINGS['enable_only_push']['display_name']}", 
-                f"{PUSH_SETTINGS['enable_only_push']['toggle_action']}:{rule_id}"
-            )
-        ])
-        
-        # 添加"添加推送配置"按钮
-        buttons.append([
-            Button.inline(
-                PUSH_SETTINGS['add_push_channel']['display_name'],
-                f"{PUSH_SETTINGS['add_push_channel']['toggle_action']}:{rule_id}"
+                TARGET_SETTINGS['add_delivery_target']['display_name'],
+                f"{TARGET_SETTINGS['add_delivery_target']['toggle_action']}:{rule_id}"
             )
         ])
         
         # 获取当前规则的所有推送配置
-        push_configs = await db_ops.get_push_configs(session, rule_id)
+        forward_targets = await db_ops.get_delivery_targets(session, rule_id)
         
         # 计算总页数
-        total_configs = len(push_configs)
+        total_configs = len(forward_targets)
         total_pages = (total_configs + configs_per_page - 1) // configs_per_page
         
         # 计算当前页的范围
@@ -670,12 +654,12 @@ async def create_push_settings_buttons(rule_id, page=0):
         end_idx = min(start_idx + configs_per_page, total_configs)
         
         # 为每个推送配置创建按钮（仅当前页）
-        for config in push_configs[start_idx:end_idx]:
+        for config in forward_targets[start_idx:end_idx]:
             # 取前20个字符
-            display_name = config.push_channel[:25] + ('...' if len(config.push_channel) > 25 else '')
+            display_name = config.address[:25] + ('...' if len(config.address) > 25 else '')
             button_text = display_name
             # 创建按钮
-            buttons.append([Button.inline(button_text, f"toggle_push_config:{config.id}")])
+            buttons.append([Button.inline(button_text, f"toggle_delivery_target:{config.id}")])
         
         # 添加分页按钮（如果需要）
         if total_pages > 1:
@@ -709,7 +693,7 @@ async def create_push_settings_buttons(rule_id, page=0):
     
     return buttons
 
-async def create_push_config_details_buttons(config_id):
+async def create_target_details_buttons(config_id):
     """创建推送配置详情按钮
     
     Args:
@@ -723,10 +707,10 @@ async def create_push_config_details_buttons(config_id):
     # 从数据库获取推送配置
     session = get_session()
     try:
-        from models.models import PushConfig
+        from models.models import ForwardTarget
         
         # 获取推送配置
-        config = session.query(PushConfig).get(config_id)
+        config = session.query(ForwardTarget).get(config_id)
         if not config:
             buttons.append([Button.inline("❌ 推送配置不存在", "noop")])
             buttons.append([Button.inline("关闭", "close_settings")])
@@ -735,8 +719,8 @@ async def create_push_config_details_buttons(config_id):
         # 添加启用/禁用按钮
         buttons.append([
             Button.inline(
-                f"{'✅ ' if config.enable_push_channel else ''}启用推送", 
-                f"toggle_push_config_status:{config_id}"
+                f"{'✅ ' if config.enabled else ''}启用推送", 
+                f"toggle_delivery_target_status:{config_id}"
             )
         ])
         
@@ -751,7 +735,7 @@ async def create_push_config_details_buttons(config_id):
         
         # 添加删除按钮
         buttons.append([
-            Button.inline("🗑️ 删除推送配置", f"delete_push_config:{config_id}")
+            Button.inline("🗑️ 删除推送配置", f"delete_delivery_target:{config_id}")
         ])
         
         # 添加返回按钮

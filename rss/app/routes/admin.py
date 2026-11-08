@@ -273,7 +273,7 @@ async def admin_feishu(request: Request, platform: str, user=Depends(get_current
         rows = app_config.as_display(session)
         bots = feishu_service.bot_rows(session, "feishu")
         webhooks = feishu_service.webhook_rows(session)
-        pushes = rule_service.list_feishu_channels(session)
+        targets = rule_service.list_feishu_channels(session)
     finally:
         session.close()
 
@@ -291,7 +291,7 @@ async def admin_feishu(request: Request, platform: str, user=Depends(get_current
             platform="feishu",
             platform_label="飞书",
             platform_domain="open.feishu.cn",
-            pushes=pushes,
+            targets=targets,
         ),
     )
 
@@ -446,10 +446,10 @@ async def admin_api_delete_rule(rule_id: int, user=Depends(get_current_user)):
         session.close()
 
 
-# ---------------------------------------------------------------- 推送地址
+# ---------------------------------------------------------------- 转发目标
 
-@router.post("/api/rules/{rule_id}/push")
-async def admin_api_add_push(rule_id: int, request: Request,
+@router.post("/api/rules/{rule_id}/targets")
+async def admin_api_add_target(rule_id: int, request: Request,
                              user=Depends(get_current_user)):
     if not user:
         return _fail("未登录", 401)
@@ -465,7 +465,7 @@ async def admin_api_add_push(rule_id: int, request: Request,
         import apprise
         if parse_feishu_url(url) is None:
             if not apprise.Apprise().add(url):
-                return _fail("无法识别的推送地址（支持 Apprise URL 或飞书/Lark webhook）")
+                return _fail("无法识别的转发目标地址（支持 Apprise URL 或飞书/Lark webhook）")
     except ImportError:
         pass  # 依赖缺失时交给运行时判断，不阻断保存
     except Exception as exc:
@@ -473,28 +473,28 @@ async def admin_api_add_push(rule_id: int, request: Request,
 
     session = get_session()
     try:
-        item = rule_service.add_push_channel(session, rule_id, url, mode, name=name)
+        item = rule_service.add_delivery_target(session, rule_id, url, mode, name=name)
         return JSONResponse({"ok": True, "item": item})
     except LookupError as exc:
         return _fail(str(exc), 404)
     except ValueError as exc:
         return _fail(str(exc))
     except Exception as exc:
-        logger.exception("新增推送地址失败 rule=%s", rule_id)
+        logger.exception("新增转发目标失败 rule=%s", rule_id)
         return _fail(f"保存失败: {exc}", 500)
     finally:
         session.close()
 
 
-@router.post("/api/push/{push_id}/toggle")
-async def admin_api_toggle_push(push_id: int, request: Request,
+@router.post("/api/targets/{target_id}/toggle")
+async def admin_api_toggle_target(target_id: int, request: Request,
                                 user=Depends(get_current_user)):
     if not user:
         return _fail("未登录", 401)
     body = await _json_body(request)
     session = get_session()
     try:
-        value = rule_service.toggle_push_channel(session, push_id, bool(body.get("enabled")))
+        value = rule_service.toggle_delivery_target(session, target_id, bool(body.get("enabled")))
         return JSONResponse({"ok": True, "enabled": value})
     except LookupError as exc:
         return _fail(str(exc), 404)
@@ -504,13 +504,13 @@ async def admin_api_toggle_push(push_id: int, request: Request,
         session.close()
 
 
-@router.delete("/api/push/{push_id}")
-async def admin_api_delete_push(push_id: int, user=Depends(get_current_user)):
+@router.delete("/api/targets/{target_id}")
+async def admin_api_delete_target(target_id: int, user=Depends(get_current_user)):
     if not user:
         return _fail("未登录", 401)
     session = get_session()
     try:
-        rule_service.delete_push_channel(session, push_id)
+        rule_service.delete_delivery_target(session, target_id)
         return JSONResponse({"ok": True})
     except LookupError as exc:
         return _fail(str(exc), 404)

@@ -17,7 +17,7 @@
 {% block content %}
 {% if rule.is_push_only %}
 <div class="note" style="margin-bottom:14px">
-  这条规则只走推送通道（没有 Telegram 目标，或已开启「仅推送不转发」），所以「处理模式、消息格式、链接预览、评论区按钮、定时总结、UFB 联动」这些只对 Telegram 生效的设置已隐藏。要恢复发送到 Telegram，关掉下方的「仅推送不转发」或给规则选一个目标会话。
+  这条规则只走转发目标（没有 Telegram 目标），所以「处理模式、消息格式、链接预览、评论区按钮、定时总结、UFB 联动」这些只对 Telegram 生效的设置已隐藏。要恢复发送到 Telegram，给规则选一个目标会话即可。
 </div>
 {% endif %}
 <div class="page-head">
@@ -38,7 +38,7 @@
 </div>
 
 <div class="note blue" style="margin-bottom:14px">
-  开关类字段改完点右上角 <b>保存改动</b> 生效；列表类（推送地址、关键字、替换）是即时保存的。
+  开关类字段改完点右上角 <b>保存改动</b> 生效；列表类（转发目标、关键字、替换）是即时保存的。
   源/目标频道的创建与改绑需要 Telegram 实体，仍走 Bot 的 <code class="mono">/bind</code> 命令。
 </div>
 
@@ -47,7 +47,7 @@
   <button data-tab="filter">过滤</button>
   <button data-tab="media">媒体</button>
   <button data-tab="ai">AI 与总结</button>
-  <button data-tab="push">推送</button>
+  <button data-tab="push">转发目标</button>
   <button data-tab="rss">RSS</button>
   <button data-tab="adv">高级</button>
 </div>
@@ -384,7 +384,7 @@
   {% endif %}
 </div>
 
-<!-- ------------------------------------------------------------ 推送 -->
+<!-- -------------------------------------------------------- 转发目标 -->
 <div class="tabpane" id="tab-push">
   {% if rule.feishu_bot %}
   <div class="card" style="margin-bottom:14px">
@@ -413,26 +413,14 @@
   {% endif %}
   <div class="card" style="margin-bottom:14px">
     <div class="card-h">
-      <h3>推送地址</h3>
+      <h3>转发目标</h3>
       <span class="sub">一条规则可挂多个，逐个发送</span>
     </div>
-    <div class="card-b">
-      <div class="field">
-        <label>启用推送</label>
-        <div class="val">{{ sw('enable_push', rule.enable_push) }}</div>
-      </div>
-      <div class="field">
-        <label>仅推送不转发</label>
-        <div class="val">{{ sw('enable_only_push', rule.enable_only_push) }}
-          <span class="hint">开启后跳过 SenderFilter，消息只走推送</span></div>
-      </div>
-    </div>
-
-    {% if rule.push_channels %}
+    {% if rule.targets %}
     <table>
       <thead><tr><th style="width:56px">ID</th><th style="width:120px">名称</th><th style="width:86px">类型</th><th>地址</th><th style="width:86px">媒体</th><th style="width:86px">状态</th><th style="width:130px"></th></tr></thead>
       <tbody>
-        {% for p in rule.push_channels %}
+        {% for p in rule.targets %}
         <tr>
           <td>#{{ p.id }}</td>
           <td>{{ p.name or '—' }}</td>
@@ -446,16 +434,16 @@
           <td>{% if p.enabled %}<span class="tag ok">● 启用</span>{% else %}<span class="tag off">○ 停用</span>{% endif %}</td>
           <td>
             <button class="btn sm ghost" type="button"
-                    data-push-toggle="{{ p.id }}" data-enabled="{{ '1' if p.enabled else '0' }}">
+                    data-target-toggle="{{ p.id }}" data-enabled="{{ '1' if p.enabled else '0' }}">
               {{ '停用' if p.enabled else '启用' }}</button>
-            <button class="btn sm danger" type="button" data-push-del="{{ p.id }}">删除</button>
+            <button class="btn sm danger" type="button" data-target-del="{{ p.id }}">删除</button>
           </td>
         </tr>
         {% endfor %}
       </tbody>
     </table>
     {% else %}
-    <div class="card-b"><div class="empty">还没有配置推送地址</div></div>
+    <div class="card-b"><div class="empty">还没有配置转发目标</div></div>
     {% endif %}
 
     <div class="card-b" style="border-top:1px solid #f0f0f0">
@@ -653,7 +641,7 @@ async function pickModel() {
     });
   }
 
-  /* ---------------------------------------------------- 推送地址 */
+  /* ------------------------------------------------ 转发目标 */
   var addPush = document.getElementById('btn-add-push');
   if (addPush) {
     addPush.addEventListener('click', function () {
@@ -661,29 +649,29 @@ async function pickModel() {
       var mode = document.getElementById('new-push-mode').value;
       var nameEl = document.getElementById('new-push-name');
       var name = nameEl ? (nameEl.value || '').trim() : '';
-      if (!url) { window.toast('请填写推送地址', 'error'); return; }
+      if (!url) { window.toast('请填写转发目标地址', 'error'); return; }
       addPush.disabled = true;
-      window.api('POST', '/admin/api/rules/' + RULE_ID + '/push',
+      window.api('POST', '/admin/api/rules/' + RULE_ID + '/targets',
                  { url: url, media_send_mode: mode, name: name })
         .then(function () { window.toast('已添加，刷新页面可见', 'ok'); setTimeout(function () { location.reload(); }, 600); })
         .catch(function (e) { window.toast(e.message, 'error'); addPush.disabled = false; });
     });
   }
 
-  document.querySelectorAll('[data-push-toggle]').forEach(function (btn) {
+  document.querySelectorAll('[data-target-toggle]').forEach(function (btn) {
     btn.addEventListener('click', function () {
       var enabled = btn.dataset.enabled !== '1';
-      window.api('POST', '/admin/api/push/' + btn.dataset.pushToggle + '/toggle',
+      window.api('POST', '/admin/api/targets/' + btn.dataset.targetToggle + '/toggle',
                  { enabled: enabled })
         .then(function () { window.toast(enabled ? '已启用' : '已停用', 'ok'); setTimeout(function () { location.reload(); }, 500); })
         .catch(function (e) { window.toast(e.message, 'error'); });
     });
   });
 
-  document.querySelectorAll('[data-push-del]').forEach(function (btn) {
+  document.querySelectorAll('[data-target-del]').forEach(function (btn) {
     btn.addEventListener('click', function () {
-      if (!confirm('确定删除这条推送地址？')) return;
-      window.api('DELETE', '/admin/api/push/' + btn.dataset.pushDel)
+      if (!confirm('确定删除这条转发目标？')) return;
+      window.api('DELETE', '/admin/api/targets/' + btn.dataset.targetDel)
         .then(function () { window.toast('已删除', 'ok'); setTimeout(function () { location.reload(); }, 500); })
         .catch(function (e) { window.toast(e.message, 'error'); });
     });

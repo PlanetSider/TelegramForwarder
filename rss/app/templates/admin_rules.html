@@ -6,7 +6,7 @@
 <div class="page-head">
   <div>
     <h1>转发规则</h1>
-    <p>源频道 → 目标频道，以及每条规则独立生效的过滤、AI、RSS、推送配置</p>
+    <p>源频道 → 目标频道，以及每条规则独立生效的过滤、AI、RSS、转发目标</p>
   </div>
   <div class="actions">
     <a class="btn" href="/admin">刷新</a>
@@ -62,7 +62,7 @@
         <td>
           {% if r.is_ai %}<span class="tag ai">AI</span>{% endif %}
           {% if r.enable_rss %}<span class="tag rss">RSS</span>{% endif %}
-          {% if r.enable_push %}<span class="tag push">推送{% if r.enable_only_push %}·仅推{% endif %}</span>{% endif %}
+          {% if r.is_push_only %}<span class="tag push">仅转发目标</span>{% endif %}
           {% if r.is_replace %}<span class="tag">替换</span>{% endif %}
           {% if r.is_summary %}<span class="tag">总结</span>{% endif %}
           {% if r.only_rss %}<span class="tag">仅RSS</span>{% endif %}
@@ -123,7 +123,7 @@
 {% block scripts %}
 <script>
   window.removeRule = async function (id) {
-    if (!confirm('删除规则 #' + id + '？\n该规则的关键字、替换、RSS、推送配置会一并删除，且不可恢复。')) {
+    if (!confirm('删除规则 #' + id + '？\n该规则的关键字、替换、RSS、转发目标会一并删除，且不可恢复。')) {
       return;
     }
     try {

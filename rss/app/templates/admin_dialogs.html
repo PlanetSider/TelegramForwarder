@@ -229,7 +229,7 @@ async function doForward() {
     let chatId = document.getElementById('fwdChat').value;
     if (!chatId) { toast('请选择群聊，或选「直接发送」', 'err'); return; }
     if (chatId === '__direct__') chatId = '';
-    body.target = String(pendingSource); // 只推送到飞书，不转发到别的 TG 会话
+    body.target = String(pendingSource); // 只发到飞书，不转发到别的 TG 会话
     body.feishu_bot_id = Number(target.slice(4));
     body.feishu_chat_id = chatId;
   } else if (target.indexOf('hook:') === 0) {

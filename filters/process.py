@@ -13,7 +13,7 @@ from filters.comment_button_filter import CommentButtonFilter
 from filters.init_filter import InitFilter
 from filters.reply_filter import ReplyFilter
 from filters.rss_filter import RSSFilter
-from filters.push_filter import PushFilter
+from filters.target_filter import TargetFilter
 logger = logging.getLogger(__name__)
 
 async def process_forward_rule(client, event, chat_id, rule):
@@ -71,7 +71,7 @@ async def process_forward_rule(client, event, chat_id, rule):
     filter_chain.add_filter(ReplyFilter())
 
     # 添加推送过滤器
-    filter_chain.add_filter(PushFilter())
+    filter_chain.add_filter(TargetFilter())
     
     # 添加删除原始消息过滤器（最后执行）
     filter_chain.add_filter(DeleteOriginalFilter())

@@ -7,13 +7,13 @@ from datetime import datetime
 import traceback
 
 from filters.base_filter import BaseFilter
-from models.models import get_session, PushConfig
+from models.models import get_session, ForwardTarget
 from enums.enums import PreviewMode
 from utils.feishu import parse_feishu_url, send_feishu_webhook
 
 logger = logging.getLogger(__name__)
 
-class PushFilter(BaseFilter):
+class TargetFilter(BaseFilter):
     """
     推送过滤器，利用apprise库推送消息
     """
@@ -58,26 +58,26 @@ class PushFilter(BaseFilter):
         
         try:
             # 获取所有启用的推送配置
-            push_configs = session.query(PushConfig).filter(
-                PushConfig.rule_id == rule_id,
-                PushConfig.enable_push_channel == True
+            forward_targets = session.query(ForwardTarget).filter(
+                ForwardTarget.rule_id == rule_id,
+                ForwardTarget.enabled == True
             ).all()
             
-            if not push_configs:
+            if not forward_targets:
                 logger.info(f'规则 {rule_id} 没有启用的推送配置，跳过推送')
                 return True
             
             # 对媒体组消息进行推送
             if context.is_media_group or (context.media_group_messages and context.skipped_media):
-                processed_files = await self._push_media_group(context, push_configs)
+                processed_files = await self._send_media_group(context, forward_targets)
             # 对单条媒体消息进行推送
             elif context.media_files or context.skipped_media:
-                processed_files = await self._push_single_media(context, push_configs)
+                processed_files = await self._send_single_media(context, forward_targets)
             # 对纯文本消息进行推送
             else:
-                processed_files = await self._push_text_message(context, push_configs)
+                processed_files = await self._send_text_message(context, forward_targets)
             
-            logger.info(f'推送已发送到 {len(push_configs)} 个配置')
+            logger.info(f'推送已发送到 {len(forward_targets)} 个配置')
             return True
             
         except Exception as e:
@@ -99,7 +99,7 @@ class PushFilter(BaseFilter):
                     except Exception as e:
                         logger.error(f'删除媒体文件失败: {str(e)}')
     
-    async def _push_media_group(self, context, push_configs):
+    async def _send_media_group(self, context, forward_targets):
         """推送媒体组消息"""
         rule = context.rule
         client = context.client
@@ -133,7 +133,7 @@ class PushFilter(BaseFilter):
                     text_to_send += context.original_link
                 
                 # 发送文本推送
-                await self._send_push_notification(push_configs, text_to_send, context=context)
+                await self._send_notification(forward_targets, text_to_send, context=context)
                 return
             
             # 检查是否有媒体组消息但没有媒体文件（这是关键修复）
@@ -188,7 +188,7 @@ class PushFilter(BaseFilter):
                 # 按配置的媒体发送方式分别处理每个推送配置
                 processed_files = []
                 
-                for config in push_configs:
+                for config in forward_targets:
                     # 获取该配置的媒体发送模式
                     send_mode = config.media_send_mode  # "Single" 或 "Multiple"
                     
@@ -200,8 +200,8 @@ class PushFilter(BaseFilter):
                     # 根据媒体发送模式来决定发送方式
                     if send_mode == "Multiple":
                         try:
-                            logger.info(f'尝试一次性发送 {len(valid_files)} 个文件到 {config.push_channel}，模式: {send_mode}')
-                            await self._send_push_notification(
+                            logger.info(f'尝试一次性发送 {len(valid_files)} 个文件到 {config.address}，模式: {send_mode}')
+                            await self._send_notification(
                                 [config], 
                                 caption_text or f"收到一组媒体文件 (共{len(valid_files)}个)", 
                                 None,  # 不使用单附件参数
@@ -215,7 +215,7 @@ class PushFilter(BaseFilter):
                             for i, file_path in enumerate(valid_files):
                                 # 第一个文件使用完整文本，后续文件使用简短描述
                                 file_caption = caption_text if i == 0 else f"媒体组的第 {i+1} 个文件"
-                                await self._send_push_notification([config], file_caption, file_path, context=context)
+                                await self._send_notification([config], file_caption, file_path, context=context)
                                 processed_files.append(file_path)
                     # 逐个发送文件
                     else:
@@ -226,7 +226,7 @@ class PushFilter(BaseFilter):
                             else:
                                 file_caption = f"媒体组的第 {i+1} 个文件" if len(valid_files) > 1 else ""
                             
-                            await self._send_push_notification([config], file_caption, file_path, context=context)
+                            await self._send_notification([config], file_caption, file_path, context=context)
                             processed_files.append(file_path)
                 
         except Exception as e:
@@ -250,7 +250,7 @@ class PushFilter(BaseFilter):
             # 返回处理过但未删除的文件
             return processed_files
     
-    async def _push_single_media(self, context, push_configs):
+    async def _send_single_media(self, context, forward_targets):
         """推送单条媒体消息"""
         rule = context.rule
         client = context.client
@@ -284,7 +284,7 @@ class PushFilter(BaseFilter):
                 text_to_send += original_link
             
             # 发送文本推送
-            await self._send_push_notification(push_configs, text_to_send, context=context)
+            await self._send_notification(forward_targets, text_to_send, context=context)
             return processed_files
         
         # 处理媒体文件
@@ -337,7 +337,7 @@ class PushFilter(BaseFilter):
                         #     caption = f"收到一个文件 ({ext})"
                     
                     # 发送推送
-                    await self._send_push_notification(push_configs, caption, file_path, context=context)
+                    await self._send_notification(forward_targets, caption, file_path, context=context)
                     # 添加到已处理文件列表
                     processed_files.append(file_path)
                     
@@ -419,7 +419,7 @@ class PushFilter(BaseFilter):
         finally:
             session.close()
 
-    async def _push_text_message(self, context, push_configs):
+    async def _send_text_message(self, context, forward_targets):
         """推送纯文本消息"""
         rule = context.rule
         
@@ -438,21 +438,21 @@ class PushFilter(BaseFilter):
             message_text += context.original_link
         
         # 发送推送
-        await self._send_push_notification(push_configs, message_text, context=context)
+        await self._send_notification(forward_targets, message_text, context=context)
         logger.info(f'文本消息推送已发送')
         
         # 返回空列表，表示没有处理任何文件
         return []
     
-    async def _send_push_notification(self, push_configs, body, attachment=None, all_attachments=None, context=None):
+    async def _send_notification(self, forward_targets, body, attachment=None, all_attachments=None, context=None):
         """发送推送通知"""
         if not body and not attachment and not all_attachments:
             logger.warning('没有内容可推送')
             return
         
-        for config in push_configs:
+        for config in forward_targets:
             try:
-                service_url = config.push_channel
+                service_url = config.address
 
                 # 飞书 / Lark 自定义机器人：apprise 1.9.2 不带 lark 插件，这里单独处理
                 feishu_target = parse_feishu_url(service_url)

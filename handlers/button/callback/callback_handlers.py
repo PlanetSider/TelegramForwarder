@@ -6,7 +6,7 @@ from telethon import Button
 from handlers.button.callback.ai_callback import *
 from handlers.button.callback.media_callback import *
 from handlers.button.callback.other_callback import *
-from handlers.button.callback.push_callback import *
+from handlers.button.callback.target_callback import *
 import logging
 import aiohttp
 from utils.constants import RSS_HOST, RSS_PORT
@@ -555,7 +555,7 @@ async def update_rule_setting(event, rule_id, session, message, field_name, conf
         elif setting_type == 'other':
             await event.edit("其他设置：", buttons=await create_other_settings_buttons(rule))
         elif setting_type == 'push':
-            await event.edit(PUSH_SETTINGS_TEXT, buttons=await create_push_settings_buttons(rule), link_preview=False)
+            await event.edit(TARGET_SETTINGS_TEXT, buttons=await create_target_settings_buttons(rule), link_preview=False)
         display_name = config.get('display_name', field_name)
         if field_name == 'use_bot':
             await event.answer(f'已切换到{"机器人" if new_value else "用户账号"}模式')
@@ -692,14 +692,14 @@ CALLBACK_HANDLERS = {
     'toggle_reverse_blacklist': callback_toggle_reverse_blacklist,
     'toggle_reverse_whitelist': callback_toggle_reverse_whitelist,
     # 推送设置
-    'push_settings': callback_push_settings,
+    'target_settings': callback_target_settings,
     'toggle_enable_push': callback_toggle_enable_push,
     'toggle_enable_only_push': callback_toggle_enable_only_push,
-    'add_push_channel': callback_add_push_channel,
-    'cancel_add_push_channel': callback_cancel_add_push_channel,
-    'toggle_push_config': callback_toggle_push_config,
-    'toggle_push_config_status': callback_toggle_push_config_status,
+    'add_delivery_target': callback_add_delivery_target,
+    'cancel_add_delivery_target': callback_cancel_add_delivery_target,
+    'toggle_delivery_target': callback_toggle_delivery_target,
+    'toggle_delivery_target_status': callback_toggle_delivery_target_status,
     'toggle_media_send_mode': callback_toggle_media_send_mode,
-    'delete_push_config': callback_delete_push_config,
-    'push_page': callback_push_page,
+    'delete_delivery_target': callback_delete_delivery_target,
+    'target_page': callback_target_page,
 }

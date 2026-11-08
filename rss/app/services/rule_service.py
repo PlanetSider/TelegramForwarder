@@ -9,7 +9,7 @@ from typing import Any, Dict, List, Optional
 
 from models.models import (
     ForwardRule, Chat, Keyword, ReplaceRule, MediaTypes, MediaExtensions,
-    PushConfig, RSSConfig, RSSPattern, RuleSync,
+    ForwardTarget, RSSConfig, RSSPattern, RuleSync,
 )
 
 logger = logging.getLogger(__name__)
@@ -39,7 +39,7 @@ def _route_kind(rule: ForwardRule) -> str:
 
     same_group 同群重发 / cross_group 跨群转发 / cross_channel 跨通道。
     """
-    if getattr(rule, "feishu_bot_id", None) or rule.enable_only_push:
+    if getattr(rule, "feishu_bot_id", None) or rule.target_chat_id is None:
         return "cross_channel"
     if rule.target_chat_id is None:
         return "cross_channel"
@@ -62,13 +62,13 @@ def _target_label(rule: ForwardRule) -> str:
             name = ""
         return f"飞书应用机器人 · {name or ('#' + str(rule.feishu_bot_id))}"
 
-    cfg = getattr(rule, "push_config", None)
-    if cfg is not None:
-        name = (getattr(cfg, "name", "") or "").strip() or "群机器人"
+    cfgs = getattr(rule, "delivery_targets", None) or []
+    if cfgs:
+        name = (getattr(cfgs[0], "name", "") or "").strip() or "群机器人"
         return f"飞书群机器人 · {name}"
 
     if rule.target_chat_id is None:
-        return "飞书推送"
+        return "仅转发目标"
 
     name = (rule.target_chat.name if rule.target_chat else "") or "?"
     return f"Telegram · {name}"
@@ -79,9 +79,10 @@ def rule_brief(rule: ForwardRule) -> Dict[str, Any]:
     return {
         "id": rule.id,
         "source": _chat_brief(rule.source_chat),
-        "target": _chat_brief(rule.target_chat, "飞书推送"),
+        "target": _chat_brief(rule.target_chat, "仅转发目标"),
         "target_label": _target_label(rule),
         "kind": _route_kind(rule),
+        "is_push_only": rule.target_chat_id is None,
         "enable_rule": bool(rule.enable_rule),
         "use_bot": bool(rule.use_bot),
         "handle_mode": _enum_value(rule.handle_mode, "FORWARD"),
@@ -89,8 +90,6 @@ def rule_brief(rule: ForwardRule) -> Dict[str, Any]:
         "is_replace": bool(rule.is_replace),
         "is_ai": bool(rule.is_ai),
         "is_summary": bool(rule.is_summary),
-        "enable_push": bool(rule.enable_push),
-        "enable_only_push": bool(rule.enable_only_push),
         "enable_rss": bool(rule.rss_config.enable_rss) if rule.rss_config else False,
         "enable_media_type_filter": bool(rule.enable_media_type_filter),
         "enable_media_size_filter": bool(rule.enable_media_size_filter),
@@ -161,10 +160,10 @@ def rule_detail(rule: ForwardRule) -> Dict[str, Any]:
         "id": rule.id,
         "feishu_bot": feishu_bot,
         "source": _chat_brief(rule.source_chat),
-        "target": _chat_brief(rule.target_chat, "飞书推送"),
+        "target": _chat_brief(rule.target_chat, "仅转发目标"),
         # 只走推送的规则（目标为空，或显式开了「仅推送不转发」），
         # Telegram 专属的设置项在页面上不展示
-        "is_push_only": rule.target_chat_id is None or bool(rule.enable_only_push),
+        "is_push_only": rule.target_chat_id is None,
         # 基础
         "enable_rule": bool(rule.enable_rule),
         "use_bot": bool(rule.use_bot),
@@ -221,15 +220,13 @@ def rule_detail(rule: ForwardRule) -> Dict[str, Any]:
         "summary_prompt": rule.summary_prompt or "",
         "is_top_summary": bool(rule.is_top_summary),
         # 推送
-        "enable_push": bool(rule.enable_push),
-        "enable_only_push": bool(rule.enable_only_push),
-        "push_channels": [
-            {"id": p.id, "url": p.push_channel,
+        "targets": [
+            {"id": p.id, "url": p.address,
              "name": (p.name or "").strip(),
-             "enabled": bool(p.enable_push_channel),
+             "enabled": bool(p.enabled),
              "media_send_mode": p.media_send_mode or "Single",
-             **_push_label(p.push_channel)}
-            for p in _push_rows(rule)
+             **_push_label(p.address)}
+            for p in _target_rows(rule)
         ],
         # RSS
         "rss": rss_dict,
@@ -274,20 +271,20 @@ def _push_label(url: Optional[str]) -> Dict[str, str]:
     return {"label": "未知", "brand": "unknown", "display": _mask_url(url)}
 
 
-def _push_rows(rule: ForwardRule) -> List[PushConfig]:
-    """一条规则可挂多个推送地址（PushConfig 无唯一约束）。
+def _target_rows(rule: ForwardRule) -> List[ForwardTarget]:
+    """一条规则可挂多个推送地址（ForwardTarget 无唯一约束）。
 
-    `rule.push_config` 是 uselist=False 的关系，只反映第一条，
+    `rule.delivery_target` 是 uselist=False 的关系，只反映第一条，
     因此这里直接走 session 查询，保证多地址场景可见。
     """
     session = getattr(rule, "_sa_instance_state", None)
     obj_session = session.session if session is not None else None
     if obj_session is None:
-        return [rule.push_config] if rule.push_config else []
+        return list(rule.delivery_targets or [])
     try:
-        return (obj_session.query(PushConfig)
-                .filter(PushConfig.rule_id == rule.id)
-                .order_by(PushConfig.id)
+        return (obj_session.query(ForwardTarget)
+                .filter(ForwardTarget.rule_id == rule.id)
+                .order_by(ForwardTarget.id)
                 .all())
     except Exception as exc:  # pragma: no cover - 查询失败不应炸页面
         logger.warning("查询推送配置失败 rule=%s: %s", rule.id, exc)
@@ -329,7 +326,7 @@ def get_overview(session) -> Dict[str, Any]:
     rss_enabled = (session.query(ForwardRule)
                    .join(RSSConfig, ForwardRule.id == RSSConfig.rule_id)
                    .filter(RSSConfig.enable_rss.is_(True)).count())
-    push_enabled = session.query(ForwardRule).filter(ForwardRule.enable_push.is_(True)).count()
+    push_enabled = session.query(ForwardRule).filter(ForwardRule.target_chat_id.is_(None)).count()
     ai_enabled = session.query(ForwardRule).filter(ForwardRule.is_ai.is_(True)).count()
 
     stats = {"today_ok": 0, "today_fail": 0}
@@ -391,7 +388,7 @@ _BOOL_FIELDS = {
     "is_send_over_media_size_message", "enable_extension_filter",
     "media_allow_text", "is_ai", "enable_ai_upload_image",
     "is_keyword_after_ai", "is_summary", "is_top_summary",
-    "enable_push", "enable_only_push", "only_rss", "is_ufb", "enable_sync",
+    "only_rss", "is_ufb", "enable_sync",
     "use_global_whitelist", "use_global_blacklist",
 }
 
@@ -567,7 +564,7 @@ def toggle_rule(session, rule_id: int, enabled: bool) -> bool:
 def delete_rule(session, rule_id: int) -> bool:
     """删除规则及其附属数据。
 
-    keywords 与 push_configs 在模型里没有配 cascade（push_config 还写成了
+    keywords 与 forward_targets 在模型里没有配 cascade（delivery_target 还写成了
     uselist=False，多地址时只会级联第一条），所以这里显式清理，避免留孤儿行。
     """
     rule = session.query(ForwardRule).get(rule_id)
@@ -575,7 +572,7 @@ def delete_rule(session, rule_id: int) -> bool:
         return False
 
     session.query(Keyword).filter(Keyword.rule_id == rule_id).delete(synchronize_session=False)
-    session.query(PushConfig).filter(PushConfig.rule_id == rule_id).delete(synchronize_session=False)
+    session.query(ForwardTarget).filter(ForwardTarget.rule_id == rule_id).delete(synchronize_session=False)
     try:
         from models.models import ForwardStat
         session.query(ForwardStat).filter(ForwardStat.rule_id == rule_id).delete(synchronize_session=False)
@@ -589,7 +586,7 @@ def delete_rule(session, rule_id: int) -> bool:
 
 # ---------------------------------------------------------------- 推送地址
 
-def add_push_channel(session, rule_id: int, url: str,
+def add_delivery_target(session, rule_id: int, url: str,
                      media_send_mode: str = "Single",
                      name: str = None) -> Dict[str, Any]:
     rule = session.query(ForwardRule).get(rule_id)
@@ -599,32 +596,32 @@ def add_push_channel(session, rule_id: int, url: str,
     if not url:
         raise ValueError("地址不能为空")
 
-    existed = (session.query(PushConfig)
-               .filter(PushConfig.rule_id == rule_id,
-                       PushConfig.push_channel == url).first())
+    existed = (session.query(ForwardTarget)
+               .filter(ForwardTarget.rule_id == rule_id,
+                       ForwardTarget.address == url).first())
     if existed:
         raise ValueError("该地址已存在")
 
     clean_name = (name or "").strip() or None
-    config = PushConfig(rule_id=rule_id, name=clean_name, push_channel=url,
-                        enable_push_channel=True,
+    config = ForwardTarget(rule_id=rule_id, name=clean_name, address=url,
+                        enabled=True,
                         media_send_mode=media_send_mode or "Single")
     session.add(config)
     session.commit()
-    return {"id": config.id, "url": config.push_channel, "name": config.name}
+    return {"id": config.id, "url": config.address, "name": config.name}
 
 
-def toggle_push_channel(session, push_id: int, enabled: bool) -> bool:
-    config = session.query(PushConfig).get(push_id)
+def toggle_delivery_target(session, push_id: int, enabled: bool) -> bool:
+    config = session.query(ForwardTarget).get(push_id)
     if not config:
         raise LookupError("推送配置不存在")
-    config.enable_push_channel = bool(enabled)
+    config.enabled = bool(enabled)
     session.commit()
-    return config.enable_push_channel
+    return config.enabled
 
 
-def delete_push_channel(session, push_id: int) -> None:
-    config = session.query(PushConfig).get(push_id)
+def delete_delivery_target(session, push_id: int) -> None:
+    config = session.query(ForwardTarget).get(push_id)
     if not config:
         raise LookupError("推送配置不存在")
     session.delete(config)
@@ -690,14 +687,14 @@ def delete_replace(session, replace_id: int) -> None:
 def list_feishu_channels(session) -> List[Dict[str, Any]]:
     """汇总所有规则下配置成飞书 / Lark webhook 的推送地址。
 
-    一条规则可以挂多个推送地址（PushConfig 无唯一约束），这里平铺展示，
+    一条规则可以挂多个推送地址（ForwardTarget 无唯一约束），这里平铺展示，
     便于在飞书设置页集中看到「哪些规则的哪些群机器人」在被使用。
     """
     from utils.feishu import parse_feishu_url
 
     items: List[Dict[str, Any]] = []
-    for row in session.query(PushConfig).all():
-        target = parse_feishu_url(row.push_channel or "")
+    for row in session.query(ForwardTarget).all():
+        target = parse_feishu_url(row.address or "")
         if not target:
             continue
         rule = session.query(ForwardRule).get(row.rule_id)
@@ -714,7 +711,7 @@ def list_feishu_channels(session) -> List[Dict[str, Any]]:
             "name": (row.name or "").strip(),
             "brand": target.brand,
             "display": target.masked_url,
-            "enabled": bool(row.enable_push_channel),
+            "enabled": bool(row.enabled),
             "media_mode": row.media_send_mode or "Single",
         })
     return items

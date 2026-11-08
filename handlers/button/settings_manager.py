@@ -426,20 +426,10 @@ OTHER_SETTINGS = {
     }
 }
 
-PUSH_SETTINGS = {
-    'enable_push_channel': {
-        'display_name': '启用推送',
-        'toggle_action': 'toggle_enable_push',
-        'toggle_func': None
-    },
-    'add_push_channel': {
-        'display_name': '➕ 添加推送配置',
-        'toggle_action': 'add_push_channel',
-        'toggle_func': None
-    },
-    'enable_only_push': {
-        'display_name': '只转发到推送配置',
-        'toggle_action': 'toggle_enable_only_push',
+TARGET_SETTINGS = {
+    'add_delivery_target': {
+        'display_name': '➕ 添加转发目标',
+        'toggle_action': 'add_delivery_target',
         'toggle_func': None
     }
 }

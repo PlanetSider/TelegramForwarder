@@ -1,5 +1,5 @@
 from sqlalchemy.exc import IntegrityError
-from models.models import Keyword, ReplaceRule, ForwardRule, MediaTypes, MediaExtensions, RSSConfig, RSSPattern, User, RuleSync, PushConfig
+from models.models import Keyword, ReplaceRule, ForwardRule, MediaTypes, MediaExtensions, RSSConfig, RSSPattern, User, RuleSync, ForwardTarget
 from werkzeug.security import check_password_hash, generate_password_hash
 from sqlalchemy.orm import joinedload
 import logging
@@ -1061,7 +1061,7 @@ class DBOperations:
             logger.error(f"删除规则同步关系时出错: {str(e)}")
             return False, f"删除同步关系失败: {str(e)}"
 
-    async def get_push_configs(self, session, rule_id):
+    async def get_delivery_targets(self, session, rule_id):
         """获取指定规则的所有推送配置
         
         Args:
@@ -1072,21 +1072,21 @@ class DBOperations:
             list: 推送配置列表
         """
         try:
-            return session.query(PushConfig).filter(
-                PushConfig.rule_id == rule_id
+            return session.query(ForwardTarget).filter(
+                ForwardTarget.rule_id == rule_id
             ).all()
         except Exception as e:
             logger.error(f"获取推送配置时出错: {str(e)}")
             return []
     
-    async def add_push_config(self, session, rule_id, push_channel, enable_push_channel=True, name=None):
+    async def add_delivery_target(self, session, rule_id, address, enabled=True, name=None):
         """添加推送配置
         
         Args:
             session: 数据库会话
             rule_id: 规则ID
-            push_channel: 推送频道
-            enable_push_channel: 是否启用推送频道
+            address: 推送频道
+            enabled: 是否启用推送频道
         
         Returns:
             tuple: (bool, str, obj) - (成功状态, 消息, 创建的对象)
@@ -1098,27 +1098,26 @@ class DBOperations:
                 return False, f"规则ID {rule_id} 不存在", None
             
             # 创建新的推送配置
-            push_config = PushConfig(
+            delivery_target = ForwardTarget(
                 rule_id=rule_id,
                 name=name,
-                push_channel=push_channel,
-                enable_push_channel=enable_push_channel
+                address=address,
+                enabled=enabled
             )
             
-            session.add(push_config)
+            session.add(delivery_target)
             session.commit()
             
             # 启用规则的推送功能
-            rule.enable_push = True
             session.commit()
             
-            return True, "成功添加推送配置", push_config
+            return True, "成功添加转发目标", delivery_target
         except Exception as e:
             session.rollback()
             logger.error(f"添加推送配置时出错: {str(e)}")
             return False, f"添加推送配置失败: {str(e)}", None
     
-    async def toggle_push_config(self, session, config_id):
+    async def toggle_delivery_target(self, session, config_id):
         """切换推送配置的启用状态
         
         Args:
@@ -1129,21 +1128,21 @@ class DBOperations:
             tuple: (bool, str) - (成功状态, 消息)
         """
         try:
-            push_config = session.query(PushConfig).get(config_id)
-            if not push_config:
+            delivery_target = session.query(ForwardTarget).get(config_id)
+            if not delivery_target:
                 return False, "推送配置不存在"
             
             # 切换启用状态
-            push_config.enable_push_channel = not push_config.enable_push_channel
+            delivery_target.enabled = not delivery_target.enabled
             session.commit()
             
-            return True, f"推送配置已{'启用' if push_config.enable_push_channel else '禁用'}"
+            return True, f"转发目标已{'启用' if delivery_target.enabled else '禁用'}"
         except Exception as e:
             session.rollback()
             logger.error(f"切换推送配置状态时出错: {str(e)}")
             return False, f"切换推送配置状态失败: {str(e)}"
     
-    async def delete_push_config(self, session, config_id):
+    async def delete_delivery_target(self, session, config_id):
         """删除推送配置
         
         Args:
@@ -1154,30 +1153,24 @@ class DBOperations:
             tuple: (bool, str) - (成功状态, 消息)
         """
         try:
-            push_config = session.query(PushConfig).get(config_id)
-            if not push_config:
+            delivery_target = session.query(ForwardTarget).get(config_id)
+            if not delivery_target:
                 return False, "推送配置不存在"
             
-            rule_id = push_config.rule_id
+            rule_id = delivery_target.rule_id
             
             # 删除配置
-            session.delete(push_config)
+            session.delete(delivery_target)
             
             # 检查是否还有其他推送配置
-            remaining_configs = session.query(PushConfig).filter(
-                PushConfig.rule_id == rule_id
+            remaining_configs = session.query(ForwardTarget).filter(
+                ForwardTarget.rule_id == rule_id
             ).count()
-            
-            # 如果没有其他推送配置，关闭规则的推送功能
-            if remaining_configs == 0:
-                rule = session.query(ForwardRule).get(rule_id)
-                if rule:
-                    rule.enable_push = False
             
             session.commit()
             
-            return True, "成功删除推送配置"
+            return True, "成功删除转发目标"
         except Exception as e:
             session.rollback()
-            logger.error(f"删除推送配置时出错: {str(e)}")
-            return False, f"删除推送配置失败: {str(e)}"
+            logger.error(f"删除转发目标时出错: {str(e)}")
+            return False, f"删除转发目标失败: {str(e)}"

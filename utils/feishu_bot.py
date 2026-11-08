@@ -194,7 +194,6 @@ def _format_rule_detail(session, rule_id: int) -> str:
         f"替换规则：{replace_count} 条",
         f"AI 处理：{'开启（' + str(rule.ai_model or '默认模型') + '）' if rule.is_ai else '关闭'}",
         f"定时总结：{'开启 ' + str(rule.summary_time) if rule.is_summary else '关闭'}",
-        f"推送：{'开启' if rule.enable_push else '关闭'}",
         f"RSS：{'开启' if (rule.rss_config and rule.rss_config.enable_rss) else '关闭'}",
     ]
     return "\n".join(lines)

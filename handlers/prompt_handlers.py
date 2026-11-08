@@ -11,12 +11,12 @@ import traceback
 from utils.auto_delete import send_message_and_delete
 from utils.auto_delete import reply_and_delete
 from utils.feishu import parse_feishu_url
-from models.models import PushConfig
+from models.models import ForwardTarget
 
 logger = logging.getLogger(__name__)
 
 
-def _is_valid_push_url(url: str) -> bool:
+def _is_valid_target_url(url: str) -> bool:
     """推送地址是否可被识别：飞书 / Lark 自定义机器人，或 Apprise 支持的协议。"""
     if not url:
         return False
@@ -71,11 +71,11 @@ async def handle_prompt_setting(event, client, sender_id, chat_id, current_state
         prompt_type = "原始链接"
         template_type = "link"
         logger.info(f"检测到设置原始链接模板,规则ID:{rule_id}")
-    elif current_state.startswith("add_push_channel:"):
+    elif current_state.startswith("add_delivery_target:"):
         # 处理添加推送频道
         rule_id = current_state.split(":")[1]
         logger.info(f"检测到添加推送频道,规则ID:{rule_id}")
-        return await handle_add_push_channel(event, client, sender_id, chat_id, rule_id, message)
+        return await handle_add_delivery_target(event, client, sender_id, chat_id, rule_id, message)
     else:
         logger.info(f"未知的状态类型:{current_state}")
         return False
@@ -173,7 +173,7 @@ async def handle_prompt_setting(event, client, sender_id, chat_id, current_state
         logger.info("数据库会话已关闭")
     return True
 
-async def handle_add_push_channel(event, client, sender_id, chat_id, rule_id, message):
+async def handle_add_delivery_target(event, client, sender_id, chat_id, rule_id, message):
     """处理添加推送频道的逻辑"""
     logger.info(f"开始处理添加推送频道,规则ID:{rule_id}")
     
@@ -186,12 +186,12 @@ async def handle_add_push_channel(event, client, sender_id, chat_id, rule_id, me
             return False
         
         # 获取用户输入的推送频道信息
-        push_channel = event.message.text.strip()
-        logger.info(f"用户输入的推送频道: {push_channel}")
+        address = event.message.text.strip()
+        logger.info(f"用户输入的推送频道: {address}")
 
         # 先校验地址，避免无效地址被静默保存、直到转发时才失败
-        if not _is_valid_push_url(push_channel):
-            logger.warning(f"推送地址无法识别: {push_channel}")
+        if not _is_valid_target_url(address):
+            logger.warning(f"推送地址无法识别: {address}")
             await reply_and_delete(
                 event,
                 "❌ 推送地址无法识别，请检查格式后重试。\n\n"
@@ -204,17 +204,16 @@ async def handle_add_push_channel(event, client, sender_id, chat_id, rule_id, me
         
         try:
             # 创建新的推送配置
-            is_email = push_channel.startswith(('mailto://', 'mailtos://', 'email://'))
-            push_config = PushConfig(
+            is_email = address.startswith(('mailto://', 'mailtos://', 'email://'))
+            delivery_target = ForwardTarget(
                 rule_id=int(rule_id),
-                push_channel=push_channel,
-                enable_push_channel=True,
+                address=address,
+                enabled=True,
                 media_send_mode="Multiple" if is_email else "Single"
             )
-            session.add(push_config)
+            session.add(delivery_target)
             
             # 启用规则的推送功能
-            rule.enable_push = True
             
             # 检查是否启用了同步功能
             if rule.enable_sync:
@@ -235,29 +234,28 @@ async def handle_add_push_channel(event, client, sender_id, chat_id, rule_id, me
                         continue
                     
                     # 检查目标规则是否已存在相同推送频道
-                    existing_config = session.query(PushConfig).filter_by(
+                    existing_config = session.query(ForwardTarget).filter_by(
                         rule_id=sync_rule_id, 
-                        push_channel=push_channel
+                        address=address
                     ).first()
                     
                     if existing_config:
-                        logger.info(f"目标规则 {sync_rule_id} 已存在推送频道 {push_channel}，跳过")
+                        logger.info(f"目标规则 {sync_rule_id} 已存在推送频道 {address}，跳过")
                         continue
                     
                     # 创建新的推送配置
                     try:
-                        sync_push_config = PushConfig(
+                        sync_delivery_target = ForwardTarget(
                             rule_id=sync_rule_id,
-                            push_channel=push_channel,
-                            enable_push_channel=True,
-                            media_send_mode=push_config.media_send_mode
+                            address=address,
+                            enabled=True,
+                            media_send_mode=delivery_target.media_send_mode
                         )
-                        session.add(sync_push_config)
+                        session.add(sync_delivery_target)
                         
                         # 启用目标规则的推送功能
-                        target_rule.enable_push = True
                         
-                        logger.info(f"已为规则 {sync_rule_id} 添加推送频道 {push_channel}")
+                        logger.info(f"已为规则 {sync_rule_id} 添加推送频道 {address}")
                     except Exception as e:
                         logger.error(f"为规则 {sync_rule_id} 添加推送配置时出错: {str(e)}")
                         continue
@@ -295,15 +293,15 @@ async def handle_add_push_channel(event, client, sender_id, chat_id, rule_id, me
             await send_message_and_delete(
                 bot_client,
                 chat_id,
-                f"已成功添加推送频道: {push_channel}",
-                buttons=await bot_handler.create_push_settings_buttons(rule_id)
+                f"已成功添加推送频道: {address}",
+                buttons=await bot_handler.create_target_settings_buttons(rule_id)
             )
         else:
             await send_message_and_delete(
                 bot_client,
                 chat_id,
                 f"添加推送频道失败: {message_text}",
-                buttons=await bot_handler.create_push_settings_buttons(rule_id)
+                buttons=await bot_handler.create_target_settings_buttons(rule_id)
             )
         
         return True

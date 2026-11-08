@@ -60,8 +60,7 @@ class ForwardRule(Base):
     enable_reverse_whitelist = Column(Boolean, default=False)  # 是否反转白名单
     media_allow_text = Column(Boolean, default=False)  # 是否放行文本
     # 推送相关字段
-    enable_push = Column(Boolean, default=False)  # 是否启用推送
-    enable_only_push = Column(Boolean, default=False)  # 是否只转发到推送配置
+
 
     # AI相关字段
     is_ai = Column(Boolean, default=False)  # 是否启用AI处理
@@ -102,7 +101,28 @@ class ForwardRule(Base):
     media_extensions = relationship('MediaExtensions', back_populates='rule', cascade="all, delete-orphan")
     rss_config = relationship('RSSConfig', uselist=False, back_populates='rule', cascade="all, delete-orphan")
     rule_syncs = relationship('RuleSync', back_populates='rule', cascade="all, delete-orphan")
-    push_config = relationship('PushConfig', uselist=False, back_populates='rule', cascade="all, delete-orphan")
+    delivery_targets = relationship('ForwardTarget', back_populates='rule', cascade="all, delete-orphan")
+
+    # ---- 兼容层（勿新增引用）----
+    # 这两个名字来自旧模型「启用推送 / 只推送不转发」。
+    # 现在语义由「有没有转发目标」直接决定，字段本身已从表里删除。
+    @property
+    def enable_push(self):
+        """有转发目标就发送，不再单独开关。"""
+        return True
+
+    @enable_push.setter
+    def enable_push(self, value):
+        pass
+
+    @property
+    def enable_only_push(self):
+        """没有 Telegram 目标 = 只走转发目标。"""
+        return self.target_chat_id is None
+
+    @enable_only_push.setter
+    def enable_only_push(self, value):
+        pass
 
 class Keyword(Base):
     __tablename__ = 'keywords'
@@ -177,20 +197,20 @@ class RuleSync(Base):
     # 关系
     rule = relationship('ForwardRule', back_populates='rule_syncs')
 
-class PushConfig(Base):
-    __tablename__ = 'push_configs'
+class ForwardTarget(Base):
+    __tablename__ = 'forward_targets'
 
     id = Column(Integer, primary_key=True)
     rule_id = Column(Integer, ForeignKey('forward_rules.id'), nullable=False)
     # 自定义名称：一条规则可以挂多个群机器人，靠它区分
     name = Column(String(64), nullable=True)
-    enable_push_channel = Column(Boolean, default=False)
-    push_channel = Column(String, nullable=False)
+    enabled = Column(Boolean, default=False)
+    address = Column(String, nullable=False)
     #媒体发送方式，一次一张Single还是多张Multiple
     media_send_mode = Column(String, nullable=False, default='Single')
 
     # 关系
-    rule = relationship('ForwardRule', back_populates='push_config')
+    rule = relationship('ForwardRule', back_populates='delivery_targets')
 
 class FeishuBot(Base):
     """一个飞书 / Lark 应用机器人（应用凭证，不是群 webhook）。"""
@@ -383,20 +403,20 @@ def migrate_db(engine):
                 logging.info("创建rss_patterns表...")
                 RSSPattern.__table__.create(engine)
 
-            # 如果push_configs表不存在，创建表
-            if 'push_configs' not in existing_tables:
-                logging.info("创建push_configs表...")
-                PushConfig.__table__.create(engine)
+            # 如果forward_targets表不存在，创建表
+            if 'forward_targets' not in existing_tables:
+                logging.info("创建forward_targets表...")
+                ForwardTarget.__table__.create(engine)
 
-            # push_configs 补充 name 列（一条规则可挂多个群机器人，需要区分）
+            # forward_targets 补充 name 列（一条规则可挂多个群机器人，需要区分）
             try:
-                _push_cols = [col['name'] for col in inspect(engine).get_columns('push_configs')]
+                _push_cols = [col['name'] for col in inspect(engine).get_columns('forward_targets')]
             except Exception:
                 _push_cols = []
             if _push_cols and 'name' not in _push_cols:
-                logging.info("push_configs 补充 name 列...")
+                logging.info("forward_targets 补充 name 列...")
                 with engine.connect() as conn:
-                    conn.execute(text("ALTER TABLE push_configs ADD COLUMN name VARCHAR(64)"))
+                    conn.execute(text("ALTER TABLE forward_targets ADD COLUMN name VARCHAR(64)"))
                     conn.commit()
 
             # 如果media_types表不存在，创建表
@@ -492,8 +512,7 @@ def migrate_db(engine):
         'userinfo_template': 'ALTER TABLE forward_rules ADD COLUMN userinfo_template VARCHAR DEFAULT "**{name}**"',
         'time_template': 'ALTER TABLE forward_rules ADD COLUMN time_template VARCHAR DEFAULT "{time}"',
         'original_link_template': 'ALTER TABLE forward_rules ADD COLUMN original_link_template VARCHAR DEFAULT "原始连接：{original_link}"',
-        'enable_push': 'ALTER TABLE forward_rules ADD COLUMN enable_push BOOLEAN DEFAULT FALSE',
-        'enable_only_push': 'ALTER TABLE forward_rules ADD COLUMN enable_only_push BOOLEAN DEFAULT FALSE',
+
         'media_allow_text': 'ALTER TABLE forward_rules ADD COLUMN media_allow_text BOOLEAN DEFAULT FALSE',
         'enable_ai_upload_image': 'ALTER TABLE forward_rules ADD COLUMN enable_ai_upload_image BOOLEAN DEFAULT FALSE',
     }
@@ -686,9 +705,30 @@ def get_engine():
         )
     return _engine
 
+def _migrate_table_names(engine):
+    """把旧表名/列名改成现在的命名，必须在 create_all 之前执行。"""
+    inspector = inspect(engine)
+    tables = set(inspector.get_table_names())
+
+    # push_configs -> forward_targets（术语统一：推送 -> 转发目标）
+    if 'push_configs' in tables and 'forward_targets' not in tables:
+        with engine.connect() as conn:
+            conn.exec_driver_sql('ALTER TABLE push_configs RENAME TO forward_targets')
+            cols = {c['name'] for c in inspect(engine).get_columns('forward_targets')}
+            if 'push_channel' in cols:
+                conn.exec_driver_sql('ALTER TABLE forward_targets RENAME COLUMN push_channel TO address')
+            if 'enable_push_channel' in cols:
+                conn.exec_driver_sql('ALTER TABLE forward_targets RENAME COLUMN enable_push_channel TO enabled')
+            conn.commit()
+        logger.info("迁移完成：push_configs 已重命名为 forward_targets")
+
+
 def init_db():
     """初始化数据库"""
     engine = get_engine()
+
+    # 先改旧表名，再建表（顺序不能反，否则 create_all 会先生成一张空的新表）
+    _migrate_table_names(engine)
 
     # 首先创建所有表
     Base.metadata.create_all(engine)

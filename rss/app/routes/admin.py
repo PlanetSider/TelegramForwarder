@@ -1492,6 +1492,62 @@ def _summary_payload(body: Dict[str, Any]) -> Dict[str, Any]:
     return payload
 
 
+@router.get("/history", response_class=HTMLResponse)
+async def admin_history(request: Request, user=Depends(get_current_user)):
+    from models.models import ForwardRule, SummaryTask, get_session
+    from utils.common import target_display
+
+    session = get_session()
+    rules, tasks = [], []
+    try:
+        for r in session.query(ForwardRule).order_by(ForwardRule.id.desc()).all():
+            try:
+                name = target_display(r) or f"规则 #{r.id}"
+            except Exception:
+                name = f"规则 #{r.id}"
+            rules.append({"id": r.id, "name": f"#{r.id} · {name}"})
+        for s in session.query(SummaryTask).order_by(SummaryTask.id.desc()).all():
+            tasks.append({"id": s.id, "name": f"#{s.id} · {s.label()}"})
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("加载转发历史选项失败")
+        return _fail(f"加载失败: {exc}", 500)
+    finally:
+        session.close()
+
+    return templates.TemplateResponse(
+        "admin_history.html",
+        _ctx(request, user, "history", rules=rules, tasks=tasks),
+    )
+
+
+@router.get("/api/history")
+async def admin_api_history(kind: str = "rule", ref_id: int = 0, limit: int = 100,
+                            user=Depends(get_current_user)):
+    from models.models import ForwardHistory, get_session
+
+    session = get_session()
+    try:
+        q = session.query(ForwardHistory).filter(ForwardHistory.kind == kind)
+        if ref_id:
+            q = q.filter(ForwardHistory.ref_id == ref_id)
+        rows = q.order_by(ForwardHistory.id.desc()).limit(min(max(limit, 1), 500)).all()
+        items = [{
+            "id": r.id,
+            "ref_id": r.ref_id,
+            "source": r.source_label or "-",
+            "target": r.target_label or "-",
+            "success": bool(r.success),
+            "content": r.content or "",
+            "detail": r.detail or "",
+            "time": r.created_at.strftime("%Y-%m-%d %H:%M:%S") if r.created_at else "",
+        } for r in rows]
+    except Exception as exc:  # noqa: BLE001
+        return _fail(f"加载转发历史失败: {exc}", 500)
+    finally:
+        session.close()
+    return JSONResponse({"ok": True, "items": items})
+
+
 @router.get("/summaries", response_class=HTMLResponse)
 async def admin_summaries(request: Request, user=Depends(get_current_user)):
     from rss.app.services import ai_service

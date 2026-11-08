@@ -141,12 +141,14 @@ class SummaryTaskRunner:
         if merge_mode == "combined":
             body = await self._summarize_many(chat_ids, prompt, model, reasoning, settings)
             if body:
-                await self._deliver(target_kind, target_value, body)
+                ok, detail = await self._deliver(target_kind, target_value, body)
+                self._record_history(task, chat_ids, ok, body, detail)
         else:
             for chat_id in chat_ids:
                 body = await self._summarize_many([chat_id], prompt, model, reasoning, settings)
                 if body:
-                    await self._deliver(target_kind, target_value, body)
+                    ok, detail = await self._deliver(target_kind, target_value, body)
+                    self._record_history(task, [chat_id], ok, body, detail)
 
     async def _summarize_many(self, chat_ids: List[int], prompt: str, model: str,
                               reasoning: str, settings: Dict[str, str]) -> str:
@@ -202,24 +204,26 @@ class SummaryTaskRunner:
         lines.reverse()
         return "\n".join(lines)
 
-    async def _deliver(self, target_kind: str, target_value: str, body: str) -> None:
+    async def _deliver(self, target_kind: str, target_value: str, body: str):
         parts = _split(body)
         if not parts:
-            return
+            return False, '内容为空'
 
         if target_kind == "chat":
             try:
                 chat_id = int(target_value)
             except (TypeError, ValueError):
                 logger.warning("总结任务：Telegram 目标无效 %s", target_value)
-                return
+                return False, f"Telegram 目标无效: {target_value}"
+            errors = []
             for part in parts:
                 try:
                     await self.user_client.send_message(chat_id, part)
                 except Exception as exc:
+                    errors.append(str(exc))
                     logger.warning("总结任务发送到 Telegram %s 失败: %s", chat_id, exc)
             logger.info("总结已发送到 Telegram %s", chat_id)
-            return
+            return (not errors), (errors[0] if errors else '')
 
         if target_kind == "webhook":
             session = get_session()
@@ -232,13 +236,15 @@ class SummaryTaskRunner:
             target = parse_feishu_url(url)
             if target is None:
                 logger.warning("总结任务：飞书 webhook 地址无效 %s", url)
-                return
+                return False, f"飞书 webhook 地址无效: {url}"
+            errors = []
             for part in parts:
                 ok, detail = await send_feishu_webhook(target, part)
                 if not ok:
+                    errors.append(detail)
                     logger.warning("总结发送到 %s 失败: %s", name, detail)
             logger.info("总结已发送到 %s", name)
-            return
+            return (not errors), (errors[0] if errors else '')
 
         if target_kind == "bot":
             session = get_session()
@@ -248,7 +254,7 @@ class SummaryTaskRunner:
                 session.close()
             if bot is None:
                 logger.warning("总结任务：飞书应用机器人不存在 %s", target_value)
-                return
+                return False, f"飞书应用机器人不存在: {target_value}"
             for part in parts:
                 ok, detail = await feishu_app.send_to_owner(bot, part)
                 if not ok:
@@ -271,3 +277,25 @@ class SummaryTaskRunner:
             except Exception as exc:
                 logger.warning("手动执行总结任务 %s 失败: %s", task_id, exc)
         return len(ids)
+
+    def _record_history(self, task, chat_ids, ok, body, detail) -> None:
+        """把总结发送结果写进「转发历史」。"""
+        try:
+            from models.models import get_session, record_history, Chat
+
+            session = get_session()
+            try:
+                names = []
+                for cid in chat_ids:
+                    chat = session.query(Chat).filter(Chat.telegram_chat_id == str(cid)).first()
+                    names.append(chat.name if chat and chat.name else str(cid))
+                record_history(
+                    session, 'summary', task.id,
+                    source_label='、'.join(names) or '-',
+                    target_label=task.target_value,
+                    success=ok, content=body, detail=detail,
+                )
+            finally:
+                session.close()
+        except Exception:
+            logger.debug('写入总结历史失败', exc_info=True)

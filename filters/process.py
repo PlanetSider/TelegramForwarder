@@ -78,5 +78,33 @@ async def process_forward_rule(client, event, chat_id, rule):
     
     # 执行过滤器链
     result = await filter_chain.process(client, event, chat_id, rule)
+    _record_history(filter_chain.last_context, rule)
     
-    return result 
+    return result
+
+def _record_history(context, rule) -> None:
+    """把这次转发的结果写进「转发历史」。旁路能力，失败不影响转发。"""
+    if context is None:
+        return
+    try:
+        from models.models import get_session, record_history
+        from utils.common import target_display
+
+        session = get_session()
+        try:
+            source = getattr(getattr(rule, 'source_chat', None), 'name', None) or context.chat_id
+            target = target_display(rule)
+            ok = bool(context.forwarded_messages) and not context.errors
+            detail = '; '.join(context.errors) if context.errors else None
+            if not ok and not detail:
+                detail = '未产生转发消息（可能被关键字/媒体规则过滤）'
+            record_history(
+                session, 'rule', rule.id,
+                source_label=source, target_label=target,
+                success=ok, content=context.message_text or context.original_message_text,
+                detail=detail,
+            )
+        finally:
+            session.close()
+    except Exception:
+        logger.debug('写入转发历史失败', exc_info=True)

@@ -708,6 +708,44 @@ class SummaryTask(Base):
         return (self.name or '').strip() or f'总结 #{self.id}'
 
 
+class ForwardHistory(Base):
+    """逐条转发/总结历史，供控制台「转发历史」页查看。"""
+    __tablename__ = 'forward_history'
+
+    id = Column(Integer, primary_key=True)
+    kind = Column(String(16), nullable=False, index=True)   # rule | summary
+    ref_id = Column(Integer, nullable=False, index=True)    # 规则 id 或总结任务 id
+    source_label = Column(String(255), nullable=True)
+    target_label = Column(String(255), nullable=True)
+    success = Column(Boolean, nullable=False, default=True)
+    content = Column(Text, nullable=True)
+    detail = Column(String(500), nullable=True)
+    created_at = Column(DateTime, default=datetime.now, index=True)
+
+
+def record_history(session, kind: str, ref_id: int, source_label=None,
+                   target_label=None, success: bool = True,
+                   content=None, detail=None) -> None:
+    """写一条转发历史。旁路能力：任何异常只记 debug，不影响主流程。"""
+    try:
+        if content is not None:
+            content = str(content)[:4000]
+        if detail is not None:
+            detail = str(detail)[:500]
+        session.add(ForwardHistory(
+            kind=kind, ref_id=int(ref_id),
+            source_label=(str(source_label)[:255] if source_label else None),
+            target_label=(str(target_label)[:255] if target_label else None),
+            success=bool(success), content=content, detail=detail,
+        ))
+        session.commit()
+    except Exception:
+        try:
+            session.rollback()
+        except Exception:
+            pass
+
+
 def record_forward_stat(session, rule_id: int, success: bool) -> None:
     """记录一次转发结果（成功/失败各 +1）。
 

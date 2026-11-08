@@ -12,6 +12,7 @@ class FilterChain:
     def __init__(self):
         """初始化过滤器链"""
         self.filters = []
+        self.last_context = None
         
     def add_filter(self, filter_obj):
         """
@@ -40,6 +41,7 @@ class FilterChain:
         """
         # 创建消息上下文
         context = MessageContext(client, event, chat_id, rule)
+        self.last_context = context
         
         logger.info(f"开始过滤器链处理，共 {len(self.filters)} 个过滤器")
         

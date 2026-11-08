@@ -1,0 +1,110 @@
+{% extends "admin_base.html" %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h2>转发历史</h2>
+    <p class="hint-src">选择一条转发规则或一个总结任务，查看它最近发出的内容与结果。</p>
+  </div>
+  <div class="row">
+    <button class="btn ghost" onclick="reload()">刷新</button>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-b">
+    <div class="row" style="gap:12px;flex-wrap:wrap;align-items:flex-end">
+      <div class="field" style="margin:0;min-width:150px">
+        <label>类型</label>
+        <select id="hKind" class="input" onchange="onKind()">
+          <option value="rule">转发规则</option>
+          <option value="summary">总结任务</option>
+        </select>
+      </div>
+      <div class="field" style="margin:0;min-width:240px;flex:1">
+        <label>对象</label>
+        <select id="hRef" class="input" onchange="reload()"></select>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-h">
+    <h3>记录</h3>
+    <span class="tag" id="hCount">0 条</span>
+  </div>
+  <div class="card-b">
+    <div id="hEmpty" class="empty">暂无记录。转发一条消息或执行一次总结后就会出现在这里。</div>
+    <div class="table-scroll" id="hWrap" style="display:none">
+      <table class="table">
+        <thead>
+          <tr>
+            <th style="width:150px">时间</th>
+            <th style="width:130px">来源</th>
+            <th style="width:150px">目标</th>
+            <th style="width:70px">结果</th>
+            <th>内容</th>
+          </tr>
+        </thead>
+        <tbody id="hBody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const RULES = {{ rules | tojson }};
+const TASKS = {{ tasks | tojson }};
+
+function esc(s) {
+  return (s || '').replace(/[&<>"]/g, function (c) {
+    return {'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[c];
+  });
+}
+
+function onKind() {
+  const kind = document.getElementById('hKind').value;
+  const list = kind === 'summary' ? TASKS : RULES;
+  const sel = document.getElementById('hRef');
+  sel.innerHTML = '';
+  const all = document.createElement('option');
+  all.value = '0';
+  all.textContent = '全部';
+  sel.appendChild(all);
+  for (const it of list) {
+    const o = document.createElement('option');
+    o.value = it.id;
+    o.textContent = it.name;
+    sel.appendChild(o);
+  }
+  reload();
+}
+
+async function reload() {
+  const kind = document.getElementById('hKind').value;
+  const refId = document.getElementById('hRef').value || '0';
+  const r = await fetch('/admin/api/history?kind=' + kind + '&ref_id=' + refId + '&limit=200',
+                        {credentials: 'same-origin'});
+  const d = await r.json();
+  const items = d.items || [];
+  document.getElementById('hCount').textContent = items.length + ' 条';
+  document.getElementById('hEmpty').style.display = items.length ? 'none' : '';
+  document.getElementById('hWrap').style.display = items.length ? '' : 'none';
+  document.getElementById('hBody').innerHTML = items.map(function (it) {
+    const badge = it.success ? '<span class="tag ok">成功</span>' : '<span class="tag warn">失败</span>';
+    const why = it.detail ? '<span class="tag warn">' + esc(it.detail) + '</span> ' : '';
+    return '<tr>' +
+      '<td class="mono">' + esc(it.time) + '</td>' +
+      '<td class="rule-sub">' + esc(it.source) + '</td>' +
+      '<td class="rule-sub">' + esc(it.target) + '</td>' +
+      '<td>' + badge + '</td>' +
+      '<td class="rule-sub">' + why + esc((it.content || '').slice(0, 300)) + '</td>' +
+      '</tr>';
+  }).join('');
+}
+
+onKind();
+</script>
+{% endblock %}

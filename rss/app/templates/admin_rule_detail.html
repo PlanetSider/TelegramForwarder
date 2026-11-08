@@ -15,6 +15,11 @@
 {%- endmacro %}
 
 {% block content %}
+{% if rule.is_push_only %}
+<div class="note" style="margin-bottom:14px">
+  这条规则只走推送通道（没有 Telegram 目标），所以「处理模式、消息格式、链接预览、评论区按钮、仅推送不转发、定时总结、UFB 联动」这些只对 Telegram 生效的设置已隐藏。
+</div>
+{% endif %}
 <div class="page-head">
   <div>
     <h1>{{ rule.source.name if rule.source else ('规则 ' ~ rule.id) }}</h1>
@@ -61,6 +66,7 @@
             <span class="hint">机器人转发保留“转发来源”，但受频道禁止转发限制；用户账号可突破限制，但需在源频道内</span>
           </div>
         </div>
+{% if not rule.is_push_only %}
         <div class="field">
           <label>处理模式</label>
           <div class="val">
@@ -83,6 +89,7 @@
                    [('on', '开启'), ('off', '关闭'), ('follow', '跟随原消息')]) }}
           </div>
         </div>
+        {% endif %}
         <div class="field">
           <label>延时处理</label>
           <div class="val">
@@ -117,10 +124,12 @@
           <label>删除原消息</label>
           <div class="val">{{ sw('is_delete_original', rule.is_delete_original) }}</div>
         </div>
+        {% if not rule.is_push_only %}
         <div class="field">
           <label>评论区按钮</label>
           <div class="val">{{ sw('enable_comment_button', rule.enable_comment_button) }}</div>
         </div>
+        {% endif %}
         <div class="field">
           <label>过滤时含发送者信息</label>
           <div class="val">{{ sw('is_filter_user_info', rule.is_filter_user_info) }}
@@ -350,6 +359,7 @@
     </div>
   </div>
 
+  {% if not rule.is_push_only %}
   <div class="card">
     <div class="card-h"><h3>定时总结</h3></div>
     <div class="card-b">
@@ -371,6 +381,7 @@
       </div>
     </div>
   </div>
+  {% endif %}
 </div>
 
 <!-- ------------------------------------------------------------ 推送 -->
@@ -410,11 +421,13 @@
         <label>启用推送</label>
         <div class="val">{{ sw('enable_push', rule.enable_push) }}</div>
       </div>
+      {% if not rule.is_push_only %}
       <div class="field">
         <label>仅推送不转发</label>
         <div class="val">{{ sw('enable_only_push', rule.enable_only_push) }}
           <span class="hint">开启后跳过 SenderFilter，消息只走推送</span></div>
       </div>
+      {% endif %}
     </div>
 
     {% if rule.push_channels %}
@@ -558,6 +571,7 @@
       </div>
     </div>
 
+    {% if not rule.is_push_only %}
     <div class="card">
       <div class="card-h"><h3>UFB 联动</h3></div>
       <div class="card-b">
@@ -575,6 +589,7 @@
                                   placeholder="默认 main" style="width:160px"></div></div>
       </div>
     </div>
+    {% endif %}
   </div>
 
   <div class="card" style="margin-top:14px">

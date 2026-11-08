@@ -119,3 +119,8 @@ async def save_config(values: Dict[str, Any]) -> Optional[Dict[str, Any]]:
 def is_available() -> bool:
     """是否具备调用条件（有 token 即认为主进程已启动过桥）。"""
     return bool(_token())
+
+
+async def run_summary(task_id: int):
+    """让主进程立即执行一个总结任务。"""
+    return await _post("/internal/summaries/run", {"task_id": int(task_id)})

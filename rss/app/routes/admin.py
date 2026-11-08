@@ -1588,6 +1588,16 @@ async def admin_api_toggle_summary(task_id: int, user=Depends(get_current_user))
         session.close()
 
 
+@router.post("/api/summaries/{task_id}/run")
+async def admin_api_run_summary(request: Request, task_id: int, user=Depends(get_current_user)):
+    result = await bridge_client.run_summary(task_id)
+    if result is None:
+        return _fail("主进程不可达，无法立即执行", 503)
+    if isinstance(result, dict) and not result.get("ok", False):
+        return _fail(result.get("error") or "执行失败", 500)
+    return JSONResponse({"ok": True})
+
+
 @router.delete("/api/summaries/{task_id}")
 async def admin_api_delete_summary(task_id: int, user=Depends(get_current_user)):
     session = get_session()

@@ -449,6 +449,35 @@ async def _handle_verify_password(request: web.Request) -> web.Response:
     return web.json_response({"ok": ok, **snapshot}, status=200 if ok else 400)
 
 
+async def _handle_run_summary(request: web.Request) -> web.Response:
+    """立即执行一个总结任务（控制台点击「执行」时调用）。"""
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    task_id = body.get("task_id")
+    try:
+        task_id = int(task_id)
+    except (TypeError, ValueError):
+        return web.json_response({"ok": False, "error": "任务 ID 无效"}, status=400)
+
+    from utils.common import get_main_module
+
+    main_module = await get_main_module()
+    runner = getattr(main_module, "summary_task_runner", None)
+    if runner is None:
+        return web.json_response(
+            {"ok": False, "error": "主进程还没启动总结调度器（Telegram 未就绪？）"},
+            status=503,
+        )
+    try:
+        await runner.run_once(task_id)
+    except Exception as exc:
+        logger.warning("立即执行总结任务 %s 失败: %s", task_id, exc)
+        return web.json_response({"ok": False, "error": str(exc)}, status=500)
+    return web.json_response({"ok": True})
+
+
 async def _handle_save_config(request: web.Request) -> web.Response:
     """保存配置项（向导与配置页共用），只接受白名单内的键。"""
     from models.models import get_session
@@ -487,6 +516,8 @@ async def start_bridge(host: str = DEFAULT_HOST, port: int = DEFAULT_PORT):
     app.router.add_post("/internal/setup/verify-code", _handle_verify_code)
     app.router.add_post("/internal/setup/verify-password", _handle_verify_password)
     app.router.add_post("/internal/setup/config", _handle_save_config)
+
+    app.router.add_post("/internal/summaries/run", _handle_run_summary)
 
     runner = web.AppRunner(app, access_log=None)
     try:

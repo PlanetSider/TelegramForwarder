@@ -287,6 +287,9 @@ async def _handle_create_rule(request: web.Request) -> web.Response:
             rule.enable_push = True
             rule.enable_only_push = True
             rule.forward_mode = ForwardMode.BLACKLIST
+            # 跨通道推送时对方看不到原消息上下文，默认带上发送人与时间
+            rule.is_original_sender = True
+            rule.is_original_time = True
 
             if bot_id_int:
                 rule.feishu_bot_id = bot_id_int

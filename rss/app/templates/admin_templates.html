@@ -49,25 +49,7 @@
   </div>
 </div>
 
-<div class="card">
-  <div class="card-h">
-    <h3>新建规则的默认值</h3>
-    <button class="btn sm primary" onclick="saveDefaults()">保存</button>
-  </div>
-  <div class="card-b">
-    <p class="hint">这些是不选模板时的出厂值，保存后对所有后续新建的规则生效。</p>
-    <div class="grid g2">
-      {% for row in default_rows %}
-      <div class="field">
-        <label>{{ row.label }}</label>
-        <input class="input" data-key="{{ row.key }}" value="{{ row.display or '' }}"
-               placeholder="{{ row.placeholder or '' }}">
-        <div class="hint">{{ row.help or row.key }}</div>
-      </div>
-      {% endfor %}
-    </div>
-  </div>
-</div>
+
 
 <div id="tplModal" class="hide" style="position:fixed;inset:0;background:rgba(0,0,0,.45);display:none;align-items:center;justify-content:center;z-index:60">
   <div class="card" style="width:760px;max-height:88vh;overflow:auto;margin:0">

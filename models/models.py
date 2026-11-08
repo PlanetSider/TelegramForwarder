@@ -685,6 +685,29 @@ class AppSetting(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
+class SummaryTask(Base):
+    """独立的总结转发任务：把一个或多个群的消息交给 AI 总结后发到一个目标。"""
+
+    __tablename__ = 'summary_tasks'
+
+    id = Column(Integer, primary_key=True)
+    name = Column(String(100), nullable=True)
+    source_chat_ids = Column(Text, nullable=True)  # JSON 数组
+    ai_provider_id = Column(Integer, nullable=True)
+    model = Column(String(128), nullable=True)
+    reasoning = Column(String(16), nullable=True)
+    summary_time = Column(String(5), default='07:00')
+    prompt = Column(Text, nullable=True)
+    target_kind = Column(String(16), default='chat')  # chat | webhook | bot
+    target_value = Column(String(255), nullable=True)
+    merge_mode = Column(String(16), default='per_source')  # per_source | combined
+    enable = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    def label(self) -> str:
+        return (self.name or '').strip() or f'总结 #{self.id}'
+
+
 def record_forward_stat(session, rule_id: int, success: bool) -> None:
     """记录一次转发结果（成功/失败各 +1）。
 

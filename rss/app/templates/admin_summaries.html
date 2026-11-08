@@ -1,0 +1,364 @@
+{% extends "admin_base.html" %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h2>总结转发</h2>
+    <p class="hint-src">把群里的消息交给 AI 总结，再按设定的时间发到目标。与「规则」不同，总结不逐条转发，而是定期汇总。</p>
+  </div>
+  <div class="row">
+    <button class="btn primary" onclick="openTask()">＋ 新增总结</button>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-h">
+    <h3>总结任务</h3>
+    <span class="tag">{{ tasks|length }} 个</span>
+  </div>
+  <div class="card-b">
+    {% if tasks %}
+    <table class="table">
+      <thead>
+        <tr>
+          <th style="width:150px">名称</th>
+          <th>来源群</th>
+          <th style="width:80px">时间</th>
+          <th style="width:170px">AI</th>
+          <th style="width:180px">发送目标</th>
+          <th style="width:90px">合并</th>
+          <th style="width:70px">状态</th>
+          <th style="width:130px">操作</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for t in tasks %}
+        <tr>
+          <td class="rule-name">{{ t.name }}</td>
+          <td class="rule-sub">
+            {% if t.sources %}
+              {% for s in t.sources %}{{ s.name }}{% if not loop.last %}、{% endif %}{% endfor %}
+            {% else %}
+              <span class="tag warn">未选择</span>
+            {% endif %}
+          </td>
+          <td class="mono">{{ t.summary_time }}</td>
+          <td class="rule-sub">{{ t.model or '默认模型' }}{% if t.reasoning %} · {{ t.reasoning }}{% endif %}</td>
+          <td class="rule-sub">{{ t.target_label }}</td>
+          <td class="rule-sub">{{ '合并一条' if t.merge_mode == 'combined' else '每群一条' }}</td>
+          <td>
+            {% if t.enable %}<span class="tag ok">启用</span>{% else %}<span class="tag off">停用</span>{% endif %}
+          </td>
+          <td>
+            <button class="btn sm" onclick='openTask({{ t.id }})'>编辑</button>
+            <button class="btn sm ghost" onclick='toggleTask({{ t.id }})'>{{ '停用' if t.enable else '启用' }}</button>
+            <button class="btn sm danger" onclick='removeTask({{ t.id }})'>删除</button>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="empty">还没有总结任务。点右上角「新增总结」创建第一个。</div>
+    {% endif %}
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-h">
+    <h3>提示词</h3>
+    <span class="tag">新建时的默认值</span>
+  </div>
+  <div class="card-b">
+    <div class="field">
+      <label>默认 AI 提示词</label>
+      <textarea class="input" data-key="DEFAULT_AI_PROMPT" rows="3"
+                placeholder="规则的 AI 改写默认提示词">{{ prompt_defaults.ai }}</textarea>
+      <div class="hint">规则里「启用 AI」时预填的提示词。</div>
+    </div>
+    <div class="field">
+      <label>默认总结提示词</label>
+      <textarea class="input" data-key="DEFAULT_SUMMARY_PROMPT" rows="3"
+                placeholder="总结任务的默认提示词">{{ prompt_defaults.summary }}</textarea>
+      <div class="hint">上面新增总结时预填的提示词。</div>
+    </div>
+    <div class="row" style="justify-content:flex-end;gap:8px">
+      <button class="btn primary" onclick="savePrompts()">保存提示词</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal hide" id="taskModal" style="display:none">
+  <div class="card" style="width:640px;max-height:86vh;overflow:auto">
+    <div class="card-h">
+      <h3 id="taskTitle">新增总结</h3>
+      <button class="btn sm ghost" onclick="closeTask()">✕</button>
+    </div>
+    <div class="card-b">
+      <input type="hidden" id="taskId">
+
+      <div class="field">
+        <label>名称</label>
+        <input class="input" id="taskName" placeholder="例如：OVH 群日报">
+      </div>
+
+      <div class="field">
+        <label>来源群（可多选）</label>
+        <div id="taskSources" style="max-height:180px;overflow:auto;border:1px solid var(--line);border-radius:4px;padding:8px">
+          {% for c in options.chats %}
+          <label style="display:flex;align-items:center;gap:8px;padding:4px 0">
+            <input type="checkbox" value="{{ c.id }}" onchange="syncMerge()">
+            <span>{{ c.name }}</span>
+          </label>
+          {% endfor %}
+          {% if not options.chats %}<div class="empty">还没有会话，先去「规则」里绑定。</div>{% endif %}
+        </div>
+      </div>
+
+      <div class="grid g2">
+        <div class="field">
+          <label>AI 供应商</label>
+          <select class="input" id="taskProvider">
+            <option value="">使用默认供应商</option>
+            {% for p in providers %}
+            <option value="{{ p.id }}">{{ p.name }}{% if p.is_default %}（默认）{% endif %}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="field">
+          <label>推理档位</label>
+          <select class="input" id="taskReasoning">
+            {% for value, label in reasoning_options %}
+            <option value="{{ value }}">{{ label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+
+      <div class="field">
+        <label>模型</label>
+        <div class="row" style="gap:8px">
+          <input class="input" id="taskModel" style="flex:1" placeholder="留空则用供应商默认模型">
+          <button class="btn" onclick="fetchModels()">获取模型</button>
+        </div>
+        <select class="input hide" id="taskModelPicker" style="margin-top:8px"></select>
+      </div>
+
+      <div class="grid g2">
+        <div class="field">
+          <label>总结时间</label>
+          <input class="input" type="time" id="taskTime" value="07:00">
+        </div>
+        <div class="field" id="mergeWrap" style="display:none">
+          <label>多群如何发送</label>
+          <select class="input" id="taskMerge">
+            <option value="per_source">每个群单独一条</option>
+            <option value="combined">多个群合并成一条</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="grid g2">
+        <div class="field">
+          <label>发送目标</label>
+          <select class="input" id="taskTargetKind" onchange="syncTargets()">
+            {% for k in options.target_kinds %}
+            <option value="{{ k.value }}">{{ k.label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="field">
+          <label>发到</label>
+          <select class="input" id="taskTargetValue"></select>
+        </div>
+      </div>
+
+      <div class="field">
+        <label>提示词</label>
+        <textarea class="input" id="taskPrompt" rows="3" placeholder="{{ prompt_defaults.summary }}"></textarea>
+        <div class="hint">留空则使用上面的「默认总结提示词」。</div>
+      </div>
+
+      <div class="row" style="justify-content:flex-end;gap:8px">
+        <button class="btn ghost" onclick="closeTask()">取消</button>
+        <button class="btn primary" onclick="saveTask()">保存</button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const OPTIONS = {{ options | tojson }};
+const PROMPTS = {{ prompt_defaults | tojson }};
+
+function syncTargets() {
+  const kind = document.getElementById('taskTargetKind').value;
+  const sel = document.getElementById('taskTargetValue');
+  const list = kind === 'webhook' ? OPTIONS.webhooks : (kind === 'bot' ? OPTIONS.bots : OPTIONS.chats);
+  sel.innerHTML = '';
+  if (!list || !list.length) {
+    sel.innerHTML = '<option value="">（没有可用目标）</option>';
+    return;
+  }
+  for (const item of list) {
+    const o = document.createElement('option');
+    o.value = item.id;
+    o.textContent = item.name;
+    sel.appendChild(o);
+  }
+}
+
+function syncMerge() {
+  const picked = document.querySelectorAll('#taskSources input:checked').length;
+  document.getElementById('mergeWrap').style.display = picked > 1 ? '' : 'none';
+}
+
+function openTask(id) {
+  const modal = document.getElementById('taskModal');
+  modal.classList.remove('hide');
+  modal.style.display = 'flex';
+
+  document.getElementById('taskId').value = id || '';
+  document.getElementById('taskTitle').textContent = id ? '编辑总结' : '新增总结';
+  document.getElementById('taskName').value = '';
+  document.getElementById('taskModel').value = '';
+  document.getElementById('taskReasoning').value = '';
+  document.getElementById('taskTime').value = '07:00';
+  document.getElementById('taskMerge').value = 'per_source';
+  document.getElementById('taskPrompt').value = '';
+  document.getElementById('taskProvider').value = '';
+  document.getElementById('taskTargetKind').value = 'chat';
+  document.querySelectorAll('#taskSources input').forEach(el => { el.checked = false; });
+
+  if (id) {
+    const t = ($TASKS.find(x => x.id === id) || {});
+    document.getElementById('taskName').value = t.name || '';
+    document.getElementById('taskModel').value = t.model || '';
+    document.getElementById('taskReasoning').value = t.reasoning || '';
+    document.getElementById('taskTime').value = t.summary_time || '07:00';
+    document.getElementById('taskMerge').value = t.merge_mode || 'per_source';
+    document.getElementById('taskPrompt').value = t.prompt || '';
+    document.getElementById('taskProvider').value = t.ai_provider_id || '';
+    document.getElementById('taskTargetKind').value = t.target_kind || 'chat';
+    const ids = new Set((t.sources || []).map(s => String(s.id)));
+    document.querySelectorAll('#taskSources input').forEach(el => {
+      el.checked = ids.has(el.value);
+    });
+  }
+  syncTargets();
+  if (id) {
+    const t = ($TASKS.find(x => x.id === id) || {});
+    const val = document.getElementById('taskTargetValue');
+    if (val && t.target_value) val.value = String(t.target_value);
+  }
+  syncMerge();
+}
+
+function closeTask() {
+  const modal = document.getElementById('taskModal');
+  modal.classList.add('hide');
+  modal.style.display = 'none';
+}
+
+async function fetchModels() {
+  const providerId = document.getElementById('taskProvider').value;
+  const picker = document.getElementById('taskModelPicker');
+  try {
+    const r = await fetch('/admin/api/ai/models', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'same-origin',
+      body: JSON.stringify(providerId ? { provider_id: Number(providerId) } : {}),
+    });
+    const d = await r.json();
+    if (!d.ok) { toast(d.error || '获取模型失败', 'err'); return; }
+    picker.innerHTML = '';
+    for (const m of d.models) {
+      const o = document.createElement('option');
+      o.value = m;
+      o.textContent = m;
+      picker.appendChild(o);
+    }
+    picker.classList.remove('hide');
+    picker.onchange = () => { document.getElementById('taskModel').value = picker.value; };
+    if (d.models.length) { document.getElementById('taskModel').value = d.models[0]; }
+    toast('已获取 ' + d.models.length + ' 个模型', 'ok');
+  } catch (e) {
+    toast('获取模型失败: ' + e, 'err');
+  }
+}
+
+async function saveTask() {
+  const id = document.getElementById('taskId').value;
+  const sources = Array.from(document.querySelectorAll('#taskSources input:checked')).map(el => Number(el.value));
+  if (!sources.length) { toast('至少选择一个来源群', 'err'); return; }
+
+  const body = {
+    name: document.getElementById('taskName').value,
+    source_chat_ids: sources,
+    ai_provider_id: document.getElementById('taskProvider').value || null,
+    model: document.getElementById('taskModel').value,
+    reasoning: document.getElementById('taskReasoning').value,
+    summary_time: document.getElementById('taskTime').value || '07:00',
+    prompt: document.getElementById('taskPrompt').value,
+    target_kind: document.getElementById('taskTargetKind').value,
+    target_value: document.getElementById('taskTargetValue').value,
+    merge_mode: sources.length > 1 ? document.getElementById('taskMerge').value : 'per_source',
+  };
+
+  const url = id ? '/admin/api/summaries/' + id : '/admin/api/summaries';
+  try {
+    const r = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'same-origin',
+      body: JSON.stringify(body),
+    });
+    const d = await r.json();
+    if (!d.ok) { toast(d.error || '保存失败', 'err'); return; }
+    toast('已保存', 'ok');
+    closeTask();
+    setTimeout(() => location.reload(), 600);
+  } catch (e) {
+    toast('保存失败: ' + e, 'err');
+  }
+}
+
+async function toggleTask(id) {
+  const r = await fetch('/admin/api/summaries/' + id + '/toggle', {
+    method: 'POST', credentials: 'same-origin',
+  });
+  const d = await r.json();
+  if (!d.ok) { toast(d.error || '操作失败', 'err'); return; }
+  location.reload();
+}
+
+async function removeTask(id) {
+  if (!confirm('确定删除这个总结任务？')) return;
+  const r = await fetch('/admin/api/summaries/' + id, {
+    method: 'DELETE', credentials: 'same-origin',
+  });
+  const d = await r.json();
+  if (!d.ok) { toast(d.error || '删除失败', 'err'); return; }
+  toast('已删除', 'ok');
+  setTimeout(() => location.reload(), 400);
+}
+
+async function savePrompts() {
+  const values = {};
+  document.querySelectorAll('[data-key]').forEach(el => { values[el.dataset.key] = el.value; });
+  const r = await fetch('/admin/api/config', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'same-origin',
+    body: JSON.stringify({ values }),
+  });
+  const d = await r.json();
+  if (!d.ok) { toast((d.errors && d.errors[0]) || d.error || '保存失败', 'err'); return; }
+  toast('提示词已保存', 'ok');
+}
+
+const $TASKS = {{ tasks | tojson }};
+</script>
+{% endblock %}

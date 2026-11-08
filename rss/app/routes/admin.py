@@ -19,7 +19,7 @@ from fastapi.templating import Jinja2Templates
 
 from models.models import get_session
 from rss.app.routes.auth import get_current_user
-from rss.app.services import rule_service
+from rss.app.services import rule_service, summary_task_service
 from utils.log_buffer import get_recent
 from utils import ai_client, app_config
 
@@ -1472,5 +1472,131 @@ async def admin_api_delete_template(template_id: int, user=Depends(get_current_u
     except Exception as exc:
         session.rollback()
         return _fail(f"删除模板失败: {exc}", 500)
+    finally:
+        session.close()
+
+
+# ---------- 总结转发 ----------
+
+
+def _summary_payload(body: Dict[str, Any]) -> Dict[str, Any]:
+    payload = {}
+    for key in ("name", "ai_provider_id", "model", "reasoning", "summary_time",
+                "prompt", "target_kind", "target_value", "merge_mode"):
+        if key in body:
+            payload[key] = body.get(key)
+    if "source_chat_ids" in body:
+        payload["source_chat_ids"] = body.get("source_chat_ids") or []
+    if "enable" in body:
+        payload["enable"] = bool(body.get("enable"))
+    return payload
+
+
+@router.get("/summaries", response_class=HTMLResponse)
+async def admin_summaries(request: Request, user=Depends(get_current_user)):
+    from rss.app.services import ai_service
+
+    session = get_session()
+    try:
+        tasks = summary_task_service.rows(session)
+        options = summary_task_service.options(session)
+        providers = ai_service.provider_rows(session)
+        current = app_config.get_current(session)
+        prompt_defaults = {
+            "ai": current.get("DEFAULT_AI_PROMPT", ""),
+            "summary": current.get("DEFAULT_SUMMARY_PROMPT", ""),
+        }
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("加载总结转发失败")
+        tasks, options, providers, prompt_defaults = [], {}, [], {"ai": "", "summary": ""}
+        return _fail(f"加载总结转发失败: {exc}", 500)
+    finally:
+        session.close()
+
+    return templates.TemplateResponse(
+        "admin_summaries.html",
+        _ctx(
+            request,
+            user,
+            "summaries",
+            tasks=tasks,
+            options=options,
+            providers=providers,
+            reasoning_options=ai_service.REASONING_OPTIONS,
+            prompt_defaults=prompt_defaults,
+        ),
+    )
+
+
+@router.get("/api/summaries")
+async def admin_api_summaries(request: Request, user=Depends(get_current_user)):
+    session = get_session()
+    try:
+        return JSONResponse({
+            "ok": True,
+            "tasks": summary_task_service.rows(session),
+            "options": summary_task_service.options(session),
+        })
+    except Exception as exc:  # noqa: BLE001
+        return _fail(f"加载总结任务失败: {exc}", 500)
+    finally:
+        session.close()
+
+
+@router.post("/api/summaries")
+async def admin_api_create_summary(request: Request, user=Depends(get_current_user)):
+    body = await _json_body(request)
+    session = get_session()
+    try:
+        task = summary_task_service.create(session, **_summary_payload(body))
+        return JSONResponse({"ok": True, "id": task.id})
+    except Exception as exc:  # noqa: BLE001
+        session.rollback()
+        return _fail(f"新建总结失败: {exc}", 500)
+    finally:
+        session.close()
+
+
+@router.post("/api/summaries/{task_id}")
+async def admin_api_update_summary(task_id: int, request: Request, user=Depends(get_current_user)):
+    body = await _json_body(request)
+    session = get_session()
+    try:
+        task = summary_task_service.update(session, task_id, **_summary_payload(body))
+        if not task:
+            return _fail("总结任务不存在", 404)
+        return JSONResponse({"ok": True})
+    except Exception as exc:  # noqa: BLE001
+        session.rollback()
+        return _fail(f"保存总结失败: {exc}", 500)
+    finally:
+        session.close()
+
+
+@router.post("/api/summaries/{task_id}/toggle")
+async def admin_api_toggle_summary(task_id: int, user=Depends(get_current_user)):
+    session = get_session()
+    try:
+        task = summary_task_service.toggle(session, task_id)
+        if not task:
+            return _fail("总结任务不存在", 404)
+        return JSONResponse({"ok": True, "enable": bool(task.enable)})
+    except Exception as exc:  # noqa: BLE001
+        session.rollback()
+        return _fail(f"切换失败: {exc}", 500)
+    finally:
+        session.close()
+
+
+@router.delete("/api/summaries/{task_id}")
+async def admin_api_delete_summary(task_id: int, user=Depends(get_current_user)):
+    session = get_session()
+    try:
+        if not summary_task_service.delete(session, task_id):
+            return _fail("总结任务不存在", 404)
+        return JSONResponse({"ok": True})
+    except Exception as exc:  # noqa: BLE001
+        session.rollback()
+        return _fail(f"删除失败: {exc}", 500)
     finally:
         session.close()

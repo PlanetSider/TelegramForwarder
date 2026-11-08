@@ -85,6 +85,13 @@
         <select id="fwdChat" class="inline-input" style="width:100%"></select>
         <div class="hint" id="fwdChatHint">机器人需要先被拉进这个群，列表才会出现</div>
       </div>
+      <div class="field">
+        <label>套用模板（可选）</label>
+        <select id="fwdTemplate" class="inline-input" style="width:100%">
+          <option value="">不套用，使用默认值</option>
+        </select>
+        <div class="hint">模板是没有源和目标的整套设置，选中后会套用到新规则</div>
+      </div>
       <div class="row" style="justify-content:flex-end;gap:8px">
         <button class="btn ghost" onclick="closeForward()">取消</button>
         <button class="btn primary" id="fwdOk" onclick="doForward()">建立规则</button>
@@ -101,6 +108,17 @@ const ALL_DIALOGS = {{ all_items | tojson }};
 const FEISHU_BOTS = {{ bots | tojson }};
 const FEISHU_HOOKS = {{ hooks | tojson }};
 let pendingSource = null;
+
+fetch('/admin/api/templates').then(r => r.json()).then(d => {
+  const sel = document.getElementById('fwdTemplate');
+  if (!sel || !d.templates) return;
+  for (const tpl of d.templates) {
+    const o = document.createElement('option');
+    o.value = tpl.id;
+    o.textContent = tpl.name + (tpl.is_default ? '（默认）' : '');
+    sel.appendChild(o);
+  }
+}).catch(() => {});
 
 function hideChatPicker() {
   const wrap = document.getElementById('fwdChatWrap');
@@ -225,6 +243,8 @@ async function doForward() {
   if (!target) { toast('请选择转发目标', 'err'); return; }
 
   const body = { source: String(pendingSource) };
+  const tplEl = document.getElementById('fwdTemplate');
+  if (tplEl && tplEl.value) body.template_id = Number(tplEl.value);
   if (target.indexOf('bot:') === 0) {
     let chatId = document.getElementById('fwdChat').value;
     if (!chatId) { toast('请选择群聊，或选「直接发送」', 'err'); return; }

@@ -217,6 +217,22 @@ async def _handle_create_rule(request: web.Request) -> web.Response:
     feishu_chat_id = (body.get("feishu_chat_id") or "").strip()
     feishu_webhook_id = body.get("feishu_webhook_id")
     is_push = bool(feishu_bot_id or feishu_webhook_id)
+
+    # 可选：套用一个模板（模板是没有源/目标的整套设置）
+    tpl_config = {}
+    template_id = body.get("template_id")
+    if template_id:
+        try:
+            from rss.app.services import template_service
+            _session = get_session()
+            try:
+                _tpl = template_service.get(_session, template_id)
+                if _tpl is not None:
+                    tpl_config = template_service.load_config(_tpl)
+            finally:
+                _session.close()
+        except Exception as exc:
+            logger.warning("读取模板 %s 失败: %s", template_id, exc)
     if not source_text:
         return _json_error("源会话必须填写")
     if not target_text and not is_push:
@@ -290,6 +306,13 @@ async def _handle_create_rule(request: web.Request) -> web.Response:
             rule.is_original_time = True
             # 默认启用公共黑名单，避免规则建好后对广告类消息无感
             rule.use_global_blacklist = True
+
+            if tpl_config:
+                try:
+                    from rss.app.services import template_service
+                    template_service.apply_to_rule(rule, tpl_config)
+                except Exception as exc:
+                    logger.warning("套用模板失败: %s", exc)
 
             if bot_id_int:
                 rule.feishu_bot_id = bot_id_int

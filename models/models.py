@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine, Column, Integer, String, Boolean, ForeignKey, Enum, UniqueConstraint, inspect, text, Date, DateTime
+from sqlalchemy import create_engine, Column, Integer, String, Boolean, ForeignKey, Enum, UniqueConstraint, inspect, text, Date, DateTime, Text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship, sessionmaker
 from enums.enums import ForwardMode, PreviewMode, MessageMode, AddMode, HandleMode, FeishuPlatform
@@ -11,6 +11,26 @@ logger = logging.getLogger(__name__)
 
 load_dotenv()
 Base = declarative_base()
+
+class ForwardTemplate(Base):
+    """转发模板：一套可复用的规则设置，没有源/目标会话。
+
+    新建转发规则时可以选一个模板，把这里的设置整体套用过去。
+    config 存 JSON 文本，键名与 ForwardRule 的字段一致。
+    """
+    __tablename__ = 'forward_templates'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    name = Column(String(100), nullable=False)
+    description = Column(String(255), nullable=True)
+    config = Column(Text, nullable=True)
+    is_default = Column(Boolean, default=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    def label(self):
+        return self.name or "未命名模板"
+
 
 class Chat(Base):
     __tablename__ = 'chats'

@@ -1,0 +1,239 @@
+{% extends "admin_base.html" %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>模板管理</h1>
+    <p>模板是一整套转发设置，但没有发送源头和目标。新建转发规则时选一个模板，设置会直接套用。</p>
+  </div>
+  <div class="row">
+    <button class="btn primary" onclick="openEditor(0)">＋ 新建模板</button>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-h">
+    <h3>模板列表</h3>
+    <span class="tag">{{ templates_list | length }} 个</span>
+  </div>
+  <div class="card-b">
+    {% if templates_list %}
+    <table class="table-clean">
+      <thead>
+        <tr><th>名称</th><th style="width:110px">字段数</th><th style="width:110px">状态</th><th style="width:230px">操作</th></tr>
+      </thead>
+      <tbody>
+        {% for t in templates_list %}
+        <tr>
+          <td>
+            <div class="rule-name">{{ t.name }}</div>
+            {% if t.description %}<div class="rule-sub">{{ t.description }}</div>{% endif %}
+          </td>
+          <td>{{ t.field_count }} 项</td>
+          <td>
+            {% if t.is_default %}<span class="tag ok">默认</span>{% else %}<span class="tag off">普通</span>{% endif %}
+          </td>
+          <td>
+            <button class="btn sm" onclick="openEditor({{ t.id }})">编辑</button>
+            {% if not t.is_default %}
+            <button class="btn sm ghost" onclick="setDefault({{ t.id }})">设为默认</button>
+            <button class="btn sm danger" onclick="removeTemplate({{ t.id }})">删除</button>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="empty">还没有模板。点右上角「新建模板」建一个，或在已有规则里用「存为模板」。</div>
+    {% endif %}
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-h">
+    <h3>新建规则的默认值</h3>
+    <button class="btn sm primary" onclick="saveDefaults()">保存</button>
+  </div>
+  <div class="card-b">
+    <p class="hint">这些是不选模板时的出厂值，保存后对所有后续新建的规则生效。</p>
+    <div class="grid g2">
+      {% for row in default_rows %}
+      <div class="field">
+        <label>{{ row.label }}</label>
+        <input class="input" data-key="{{ row.key }}" value="{{ row.display or '' }}"
+               placeholder="{{ row.placeholder or '' }}">
+        <div class="hint">{{ row.help or row.key }}</div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+
+<div id="tplModal" class="hide" style="position:fixed;inset:0;background:rgba(0,0,0,.45);display:none;align-items:center;justify-content:center;z-index:60">
+  <div class="card" style="width:760px;max-height:88vh;overflow:auto;margin:0">
+    <div class="card-h">
+      <h3 id="tplTitle">新建模板</h3>
+      <button class="btn sm ghost" onclick="closeEditor()">关闭</button>
+    </div>
+    <div class="card-b">
+      <div class="grid g2" style="margin-bottom:12px">
+        <div class="field">
+          <label>模板名称</label>
+          <input class="input" id="tplName" placeholder="例如：AI 改写 + 飞书推送">
+        </div>
+        <div class="field">
+          <label>说明（可选）</label>
+          <input class="input" id="tplDesc" placeholder="这套设置用来做什么">
+        </div>
+      </div>
+      <div id="tplFields"></div>
+      <div class="row" style="margin-top:14px">
+        <button class="btn primary" onclick="saveTemplate()">保存模板</button>
+        <button class="btn ghost" onclick="closeEditor()">取消</button>
+        <span class="spacer"></span>
+        <label class="row" style="gap:6px;font-size:13px">
+          <input type="checkbox" id="tplDefault"> 设为默认模板
+        </label>
+      </div>
+      <div class="note" id="tplNote" style="margin-top:10px"></div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const GROUPS = {{ field_groups | tojson }};
+const PROVIDERS = {{ providers | tojson }};
+const TEMPLATES = {{ templates_list | tojson }};
+let editingId = 0;
+
+function fieldHtml(item, value) {
+  const id = 'f_' + item.name;
+  if (item.kind === 'switch') {
+    const on = (value === true || value === 'true' || value === 1) ? 'checked' : '';
+    return '<div class="field"><label>' + item.label + '</label>' +
+      '<label class="switch"><input type="checkbox" id="' + id + '" data-tpl="' + item.name + '" ' + on + '><i></i></label>' +
+      '<div class="hint">' + item.name + '</div></div>';
+  }
+  if (item.kind === 'select') {
+    let opts = '';
+    for (const [v, t] of item.options) {
+      const sel = (String(value) === v) ? ' selected' : '';
+      opts += '<option value="' + v + '"' + sel + '>' + t + '</option>';
+    }
+    return '<div class="field"><label>' + item.label + '</label>' +
+      '<select class="input" id="' + id + '" data-tpl="' + item.name + '">' + opts + '</select>' +
+      '<div class="hint">' + item.name + '</div></div>';
+  }
+  if (item.kind === 'provider') {
+    let opts = '<option value="">跟随默认供应商</option>';
+    for (const p of PROVIDERS) {
+      const sel = (String(value) === String(p.id)) ? ' selected' : '';
+      opts += '<option value="' + p.id + '"' + sel + '>' + p.name + '</option>';
+    }
+    return '<div class="field"><label>' + item.label + '</label>' +
+      '<select class="input" id="' + id + '" data-tpl="' + item.name + '">' + opts + '</select>' +
+      '<div class="hint">' + item.name + '</div></div>';
+  }
+  if (item.kind === 'textarea') {
+    return '<div class="field" style="grid-column:1/-1"><label>' + item.label + '</label>' +
+      '<textarea class="input" rows="3" id="' + id + '" data-tpl="' + item.name + '">' + (value || '') + '</textarea>' +
+      '<div class="hint">' + item.name + '</div></div>';
+  }
+  const type = item.kind === 'number' ? 'number' : (item.kind === 'time' ? 'time' : 'text');
+  return '<div class="field"><label>' + item.label + '</label>' +
+    '<input class="input" type="' + type + '" id="' + id + '" data-tpl="' + item.name + '" value="' + (value === undefined || value === null ? '' : value) + '">' +
+    '<div class="hint">' + item.name + '</div></div>';
+}
+
+function renderFields(config) {
+  const cfg = config || {};
+  let html = '';
+  for (const [title, items] of GROUPS) {
+    html += '<div class="card-h" style="padding:10px 0;border:0"><h3 style="font-size:14px">' + title + '</h3></div>';
+    html += '<div class="grid g2" style="margin-bottom:10px">';
+    for (const item of items) html += fieldHtml(item, cfg[item.name]);
+    html += '</div>';
+  }
+  document.getElementById('tplFields').innerHTML = html;
+}
+
+function collectConfig() {
+  const cfg = {};
+  document.querySelectorAll('#tplFields [data-tpl]').forEach(el => {
+    const key = el.dataset.tpl;
+    if (el.type === 'checkbox') cfg[key] = el.checked;
+    else if (el.type === 'number') cfg[key] = el.value === '' ? null : Number(el.value);
+    else cfg[key] = el.value;
+  });
+  return cfg;
+}
+
+function openEditor(id) {
+  editingId = id || 0;
+  const modal = document.getElementById('tplModal');
+  modal.classList.remove('hide');
+  modal.style.display = 'flex';
+  document.getElementById('tplNote').textContent = '';
+
+  let tpl = { name: '', description: '', config: {}, is_default: false };
+  if (id) {
+    const found = TEMPLATES.find(t => t.id === id);
+    if (found) tpl = found;
+  }
+  document.getElementById('tplTitle').textContent = id ? '编辑模板' : '新建模板';
+  document.getElementById('tplName').value = tpl.name || '';
+  document.getElementById('tplDesc').value = tpl.description || '';
+  document.getElementById('tplDefault').checked = !!tpl.is_default;
+  renderFields(tpl.config || {});
+}
+
+function closeEditor() {
+  const modal = document.getElementById('tplModal');
+  modal.classList.add('hide');
+  modal.style.display = 'none';
+}
+
+async function saveTemplate() {
+  const name = document.getElementById('tplName').value.trim();
+  if (!name) { window.toast('请填写模板名称', 'warn'); return; }
+  const body = {
+    name: name,
+    description: document.getElementById('tplDesc').value.trim(),
+    config: collectConfig(),
+    is_default: document.getElementById('tplDefault').checked,
+  };
+  try {
+    if (editingId) await window.api('POST', '/admin/api/templates/' + editingId, body);
+    else await window.api('POST', '/admin/api/templates', body);
+    window.toast('已保存', 'ok');
+    closeEditor();
+    setTimeout(() => location.reload(), 500);
+  } catch (e) {
+    document.getElementById('tplNote').textContent = e.message;
+  }
+}
+
+async function setDefault(id) {
+  try { await window.api('POST', '/admin/api/templates/' + id + '/default', {}); location.reload(); }
+  catch (e) { window.toast(e.message, 'err'); }
+}
+
+async function removeTemplate(id) {
+  if (!confirm('确定删除这个模板？')) return;
+  try { await window.api('DELETE', '/admin/api/templates/' + id); location.reload(); }
+  catch (e) { window.toast(e.message, 'err'); }
+}
+
+function saveDefaults() {
+  const values = {};
+  document.querySelectorAll('[data-key]').forEach(el => {
+    if (el.value !== '') values[el.dataset.key] = el.value;
+  });
+  window.api('POST', '/admin/api/config', { values: values })
+    .then(() => { window.toast('已保存', 'ok'); setTimeout(() => location.reload(), 500); })
+    .catch(e => window.toast(e.message, 'err'));
+}
+</script>
+{% endblock %}

@@ -34,6 +34,8 @@
       <div class="nav-group">配置</div>
       <a href="/admin/setup" class="{{ 'on' if active == 'setup' else '' }}">
         <span class="ico">✧</span>配置向导</a>
+      <a href="/admin/templates" class="{{ 'on' if active == 'templates' else '' }}">
+        <span class="ico">❐</span>模板管理</a>
 
       <div class="nav-group">通道设置</div>
       <a href="/admin/settings/telegram"
@@ -56,7 +58,11 @@
       </div>
 
       <div class="nav-group">RSS</div>
-      <a href="/rss/dashboard"><span class="ico">◫</span>RSS 设置</a>
+      <a href="/rss/dashboard" class="{{ 'on' if active == 'rss_panel' else '' }}">
+        <span class="ico">◫</span>RSS</a>
+      <a href="/admin/settings/rss"
+         class="{{ 'on' if active == 'settings' and settings_group == 'rss' else '' }}">
+        <span class="ico">⚙</span>RSS设置</a>
     </nav>
     <div class="side-foot">
       <div><span class="dot"></span>服务运行中</div>

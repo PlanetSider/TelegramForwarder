@@ -17,6 +17,7 @@ REASONING_OPTIONS = [
     ("low", "低（low）"),
     ("medium", "中（medium）"),
     ("high", "高（high）"),
+    ("max", "极高（max）"),
 ]
 
 
@@ -103,10 +104,9 @@ def update_provider(session, provider_id: int, **kwargs) -> AIProvider:
     if "api_key" in kwargs:
         raw = (kwargs["api_key"] or "").strip()
         # 前端把已有 Key 渲染成打码串，原样提交时表示“不修改”
+        # 留空或原样回传打码串都表示「不修改」，避免编辑时把 Key 清空
         if raw and "*" not in raw and "…" not in raw:
             provider.api_key = raw
-        elif raw == "":
-            provider.api_key = None
     if "model" in kwargs:
         provider.model = (kwargs["model"] or "").strip() or None
     if "reasoning" in kwargs:

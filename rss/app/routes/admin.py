@@ -46,7 +46,7 @@ def _ctx(request: Request, user, active: str, **extra):
         "project_name": "TG Forwarder",
         # 侧边栏「全局设置」下的二级菜单：Telegram / 飞书 已提升为「通道设置」一级入口
         "settings_groups": [(gid, title) for gid, title, _ in app_config.GROUPS
-                            if gid not in ("telegram", "feishu", "ai")],
+                            if gid not in ("telegram", "feishu", "ai", "behavior", "rss")],
         "settings_group": "",
         # 侧边栏「通道设置」里飞书 / Lark 是两个页面，靠它判断高亮
         "platform": "",
@@ -56,6 +56,72 @@ def _ctx(request: Request, user, active: str, **extra):
 
 
 # ---------------------------------------------------------------- 页面
+
+
+# 模板编辑表单的字段分组（顺序即页面顺序）
+# kind: select / switch / text / number / time / textarea / provider
+TEMPLATE_FIELD_GROUPS = [
+    ("基础", [
+        {"name": "forward_mode", "label": "过滤模式", "kind": "select", "options": [
+            ("blacklist", "仅黑名单"), ("whitelist", "仅白名单"),
+            ("blacklist_then_whitelist", "先黑后白"), ("whitelist_then_blacklist", "先白后黑")]},
+        {"name": "add_mode", "label": "关键字添加模式", "kind": "select", "options": [
+            ("blacklist", "黑名单"), ("whitelist", "白名单")]},
+        {"name": "handle_mode", "label": "处理模式", "kind": "select", "options": [
+            ("FORWARD", "转发为新消息"), ("EDIT", "编辑原消息")]},
+        {"name": "message_mode", "label": "消息格式", "kind": "select", "options": [
+            ("Markdown", "Markdown"), ("HTML", "HTML")]},
+        {"name": "is_preview", "label": "链接预览", "kind": "select", "options": [
+            ("follow", "跟随原消息"), ("on", "开启"), ("off", "关闭")]},
+        {"name": "is_replace", "label": "启用正则替换", "kind": "switch"},
+        {"name": "is_filter_user_info", "label": "过滤时附带发送者信息", "kind": "switch"},
+        {"name": "enable_delay", "label": "启用延时处理", "kind": "switch"},
+        {"name": "delay_seconds", "label": "延时秒数", "kind": "number"},
+    ]),
+    ("名单", [
+        {"name": "enable_reverse_blacklist", "label": "反转黑名单", "kind": "switch"},
+        {"name": "enable_reverse_whitelist", "label": "反转白名单", "kind": "switch"},
+        {"name": "use_global_whitelist", "label": "启用公共白名单", "kind": "switch"},
+        {"name": "use_global_blacklist", "label": "启用公共黑名单", "kind": "switch"},
+    ]),
+    ("媒体", [
+        {"name": "enable_media_type_filter", "label": "启用媒体类型过滤", "kind": "switch"},
+        {"name": "enable_media_size_filter", "label": "启用媒体大小过滤", "kind": "switch"},
+        {"name": "max_media_size", "label": "大小上限 (MB)", "kind": "number"},
+        {"name": "is_send_over_media_size_message", "label": "超限时提示", "kind": "switch"},
+        {"name": "enable_extension_filter", "label": "启用扩展名过滤", "kind": "switch"},
+        {"name": "extension_filter_mode", "label": "扩展名模式", "kind": "select", "options": [
+            ("blacklist", "黑名单"), ("whitelist", "白名单")]},
+        {"name": "media_allow_text", "label": "媒体被过滤时放行文本", "kind": "switch"},
+    ]),
+    ("AI 与总结", [
+        {"name": "is_ai", "label": "启用 AI", "kind": "switch"},
+        {"name": "ai_provider_id", "label": "AI 供应商", "kind": "provider"},
+        {"name": "ai_model", "label": "AI 模型", "kind": "text"},
+        {"name": "ai_prompt", "label": "提示词", "kind": "textarea"},
+        {"name": "enable_ai_upload_image", "label": "上传图片给 AI", "kind": "switch"},
+        {"name": "is_keyword_after_ai", "label": "AI 后再次过滤关键字", "kind": "switch"},
+        {"name": "is_summary", "label": "启用总结", "kind": "switch"},
+        {"name": "summary_time", "label": "总结时间", "kind": "time"},
+        {"name": "summary_prompt", "label": "总结提示词", "kind": "textarea"},
+        {"name": "is_top_summary", "label": "置顶总结", "kind": "switch"},
+    ]),
+    ("附加信息", [
+        {"name": "is_original_sender", "label": "显示原始发送者", "kind": "switch"},
+        {"name": "userinfo_template", "label": "发送者模板", "kind": "text"},
+        {"name": "is_original_time", "label": "显示发送时间", "kind": "switch"},
+        {"name": "time_template", "label": "时间模板", "kind": "text"},
+        {"name": "is_original_link", "label": "显示原始链接", "kind": "switch"},
+        {"name": "original_link_template", "label": "链接模板", "kind": "text"},
+    ]),
+    ("其它", [
+        {"name": "is_delete_original", "label": "删除原消息", "kind": "switch"},
+        {"name": "enable_comment_button", "label": "评论区直达按钮", "kind": "switch"},
+        {"name": "is_ufb", "label": "启用 UFB", "kind": "switch"},
+        {"name": "ufb_domain", "label": "UFB 域名", "kind": "text"},
+        {"name": "ufb_item", "label": "UFB 板块", "kind": "text"},
+    ]),
+]
 
 @router.get("", response_class=HTMLResponse)
 @router.get("/", response_class=HTMLResponse)
@@ -396,7 +462,7 @@ async def admin_api_create_rule(request: Request,
     # 飞书相关字段必须一并透传给主进程，否则推送目标会被丢弃，
     # 规则会退化成「源 → 源」的 Telegram 自绑规则。
     payload = {"source": source, "target": target}
-    for key in ("feishu_bot_id", "feishu_chat_id", "feishu_webhook_id"):
+    for key in ("feishu_bot_id", "feishu_chat_id", "feishu_webhook_id", "template_id"):
         value = body.get(key)
         if value not in (None, ""):
             payload[key] = value
@@ -1258,3 +1324,153 @@ async def admin_account(request: Request, user=Depends(get_current_user)):
              account=user,
              password_rule=describe_password_rule()),
     )
+
+
+# ---------------------------------------------------------------- 模板管理
+
+@router.get("/templates")
+async def admin_templates(request: Request, user=Depends(get_current_user)):
+    """模板管理：模板是没有源会话和目标的整套规则设置。"""
+    if not user:
+        return _login_redirect()
+
+    from rss.app.services import ai_service, template_service
+    from utils import app_config
+
+    session = get_session()
+    try:
+        items = template_service.rows(session)
+        if not items:
+            template_service.ensure_default(session)
+            items = template_service.rows(session)
+        providers = ai_service.provider_rows(session)
+        defaults = app_config.as_display(session)
+        default_rows = [row for row in defaults if row.get("group") == "behavior"]
+    finally:
+        session.close()
+
+    return templates.TemplateResponse(
+        "admin_templates.html",
+        _ctx(request, user, "templates",
+             templates_list=items,
+             providers=providers,
+             reasoning_options=ai_service.REASONING_OPTIONS,
+             default_rows=default_rows,
+             field_groups=TEMPLATE_FIELD_GROUPS),
+    )
+
+
+@router.get("/api/templates")
+async def admin_api_templates(user=Depends(get_current_user)):
+    if not user:
+        return _fail("未登录", 401)
+    from rss.app.services import template_service
+
+    session = get_session()
+    try:
+        return JSONResponse({"ok": True, "templates": template_service.rows(session)})
+    finally:
+        session.close()
+
+
+@router.post("/api/templates")
+async def admin_api_create_template(request: Request, user=Depends(get_current_user)):
+    if not user:
+        return _fail("未登录", 401)
+
+    from rss.app.services import template_service
+
+    body = await _json_body(request)
+    session = get_session()
+    try:
+        template = template_service.create(
+            session,
+            name=body.get("name") or "",
+            description=body.get("description") or "",
+            config=body.get("config") or {},
+            is_default=bool(body.get("is_default")),
+        )
+        return JSONResponse({"ok": True, "id": template.id})
+    except ValueError as exc:
+        session.rollback()
+        return _fail(str(exc), 400)
+    except Exception as exc:
+        session.rollback()
+        logger.exception("创建模板失败")
+        return _fail(f"创建模板失败: {exc}", 500)
+    finally:
+        session.close()
+
+
+@router.post("/api/templates/{template_id}")
+async def admin_api_update_template(template_id: int, request: Request,
+                                    user=Depends(get_current_user)):
+    if not user:
+        return _fail("未登录", 401)
+
+    from rss.app.services import template_service
+
+    body = await _json_body(request)
+    kwargs = {}
+    for key in ("name", "description", "config", "is_default"):
+        if key in body:
+            kwargs[key] = body.get(key)
+
+    session = get_session()
+    try:
+        template_service.update(session, template_id, **kwargs)
+        return JSONResponse({"ok": True})
+    except LookupError as exc:
+        return _fail(str(exc), 404)
+    except ValueError as exc:
+        session.rollback()
+        return _fail(str(exc), 400)
+    except Exception as exc:
+        session.rollback()
+        logger.exception("保存模板失败")
+        return _fail(f"保存模板失败: {exc}", 500)
+    finally:
+        session.close()
+
+
+@router.post("/api/templates/{template_id}/default")
+async def admin_api_template_default(template_id: int, user=Depends(get_current_user)):
+    if not user:
+        return _fail("未登录", 401)
+
+    from rss.app.services import template_service
+
+    session = get_session()
+    try:
+        template_service.set_default(session, template_id)
+        return JSONResponse({"ok": True})
+    except LookupError as exc:
+        return _fail(str(exc), 404)
+    except Exception as exc:
+        session.rollback()
+        return _fail(f"设置默认模板失败: {exc}", 500)
+    finally:
+        session.close()
+
+
+@router.delete("/api/templates/{template_id}")
+async def admin_api_delete_template(template_id: int, user=Depends(get_current_user)):
+    if not user:
+        return _fail("未登录", 401)
+
+    from rss.app.services import template_service
+
+    session = get_session()
+    try:
+        template_service.delete(session, template_id)
+        return JSONResponse({"ok": True})
+    except LookupError as exc:
+        return _fail(str(exc), 404)
+    except ValueError as exc:
+        session.rollback()
+        return _fail(str(exc), 400)
+    except Exception as exc:
+        session.rollback()
+        return _fail(f"删除模板失败: {exc}", 500)
+    finally:
+        session.close()

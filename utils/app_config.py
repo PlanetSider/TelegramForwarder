@@ -46,7 +46,8 @@ class SettingSpec:
 GROUPS: List[Tuple[str, str, str]] = [
     ("telegram", "Telegram", "账号凭据与管理员"),
     ("ai", "AI 服务", "各家模型的密钥与接入地址"),
-    ("behavior", "默认行为", "新建规则时的默认取值"),
+    ("behavior", "模板默认值", "新建规则时的默认取值"),
+    ("rss", "RSS 设置", "RSS 订阅源的开关、存储路径与对外地址"),
     ("global_whitelist", "公共白名单", "所有规则可共用的白名单关键字"),
     ("global_blacklist", "公共黑名单", "所有规则可共用的黑名单关键字"),
     ("switch", "功能开关", "整体能力的启用与停用"),
@@ -85,24 +86,18 @@ SETTINGS: List[SettingSpec] = [
                 help="对应服务商的密钥；本机 Ollama 这类免鉴权的可留空"),
     SettingSpec("AI_MODEL", "默认模型", "ai", "model",
                 help="点右侧「获取模型」从接口读取列表后选择，也可以直接手填模型 ID"),
-    SettingSpec("AI_REASONING", "思考模式", "ai", "select",
-                options=(("", "跟随服务商默认"), ("low", "轻（快）"),
-                         ("medium", "中"), ("high", "深（慢）")),
+    SettingSpec("AI_REASONING", "推理档位", "ai", "select",
+                options=(("", "跟随服务商默认"), ("minimal", "最小（minimal）"),
+                         ("low", "低（low）"), ("medium", "中（medium）"),
+                         ("high", "高（high）"), ("max", "极高（max）")),
                 help="对应 reasoning_effort 参数，只有部分模型支持，不支持的会被忽略"),
 
     # ---------------------------------------------------------------- 默认行为
-    SettingSpec("PROJECT_NAME", "项目名称", "behavior", "text",
+    SettingSpec("PROJECT_NAME", "项目名称", "rss", "text",
                 default="TG Forwarder RSS", help="RSS 订阅源标题后缀"),
     SettingSpec("DEFAULT_TIMEZONE", "默认时区", "behavior", "text",
                 default="Asia/Shanghai",
                 help="IANA 时区名，影响消息时间显示与总结时间"),
-    SettingSpec("DEFAULT_AI_MODEL", "默认 AI 模型", "behavior", "text",
-                default="gpt-4o", help="新建规则启用 AI 时预选的模型"),
-    SettingSpec("DEFAULT_AI_REASONING", "默认推理强度", "behavior", "select",
-                default="", help="新建规则启用 AI 时预选的推理强度",
-                options=(("", "跟随服务商默认"), ("minimal", "最小（minimal）"),
-                         ("low", "低（low）"), ("medium", "中（medium）"),
-                         ("high", "高（high）"))),
     SettingSpec("DEFAULT_AI_PROMPT", "默认 AI 提示词", "behavior", "textarea",
                 default="请尊重原意，保持原有格式不变，用简体中文重写下面的内容："),
     SettingSpec("DEFAULT_SUMMARY_PROMPT", "默认总结提示词", "behavior", "textarea",
@@ -113,7 +108,7 @@ SETTINGS: List[SettingSpec] = [
                 default="10", help="单位 MB，新建规则时的预选值"),
 
     # ---------------------------------------------------------------- 功能开关
-    SettingSpec("RSS_ENABLED", "启用 RSS 订阅源", "switch", "bool", default="false",
+    SettingSpec("RSS_ENABLED", "启用 RSS 订阅源", "rss", "bool", default="false",
                 help="关闭后不再生成 RSS，也不往 RSS 面板推送条目；WebUI 本身始终可用"),
     SettingSpec("UFB_ENABLED", "启用 UFB 联动", "switch", "bool", default="false"),
     SettingSpec("USER_MESSAGE_DELETE_ENABLE", "允许删除用户消息", "switch", "bool",
@@ -143,14 +138,14 @@ SETTINGS: List[SettingSpec] = [
                 default="2", help="单位秒"),
 
     # ---------------------------------------------------------------- 存储路径
-    SettingSpec("RSS_DATA_PATH", "RSS 数据目录", "storage", "text",
+    SettingSpec("RSS_DATA_PATH", "RSS 数据目录", "rss", "text",
                 default="./rss/data", restart=True,
                 help="容器内路径，已由 compose 挂载；改动后需重启"),
-    SettingSpec("RSS_MEDIA_PATH", "RSS 媒体目录", "storage", "text",
+    SettingSpec("RSS_MEDIA_PATH", "RSS 媒体目录", "rss", "text",
                 default="./rss/media", restart=True),
 
     # ---------------------------------------------------------------- 外部服务
-    SettingSpec("RSS_MEDIA_BASE_URL", "RSS 媒体反代地址", "external", "text",
+    SettingSpec("RSS_MEDIA_BASE_URL", "RSS 媒体反代地址", "rss", "text",
                 help="留空则用请求头自动推导；反代到不同域名时填写"),
     SettingSpec("UFB_SERVER_URL", "UFB 服务地址", "external", "text",
                 help="启用 UFB 联动时必填"),

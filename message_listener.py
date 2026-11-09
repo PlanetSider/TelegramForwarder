@@ -166,7 +166,7 @@ async def handle_user_message(event, user_client, bot_client):
         
         # 合并窗口（秒）：0 表示不合并，逐条转发
         try:
-            batch_seconds = float(os.getenv("FORWARD_BATCH_SECONDS", "0") or 0)
+            batch_seconds = float(os.getenv("FORWARD_BATCH_SECONDS", "10") or 10)
         except (TypeError, ValueError):
             batch_seconds = 0.0
 

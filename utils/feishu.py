@@ -38,7 +38,7 @@ LARK_WEBHOOK_BASE = "https://open.larksuite.com/open-apis/bot/v2/hook/"
 MAX_TEXT_BYTES = 20 * 1024 - 1024
 
 # 官方限流：单租户单机器人 100 次/分钟、5 次/秒
-_MAX_SENDS_PER_SECOND = 5
+_MAX_SENDS_PER_SECOND = 1.5  # 飞书自定义机器人限 100 次/分钟
 
 _SCHEME_BASE = {
     "feishu": FEISHU_WEBHOOK_BASE,

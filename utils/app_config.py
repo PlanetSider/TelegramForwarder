@@ -129,6 +129,12 @@ SETTINGS: List[SettingSpec] = [
     SettingSpec("MEDIA_EXTENSIONS_COLS", "扩展名 列数", "ui", "int", default="6"),
 
     # ---------------------------------------------------------------- 超时与批量
+    SettingSpec("FORWARD_BATCH_SECONDS", "转发合并间隔", "timing", "int",
+                default="0", restart=True,
+                help="大于 0 时开启合并：间隔内收到的多条纯文本消息会合成一条发出，"
+                     "填 0 关闭（逐条转发）。单位秒。仅对「使用机器人」的规则生效，"
+                     "带媒体的消息不参与合并"),
+
     SettingSpec("BOT_MESSAGE_DELETE_TIMEOUT", "机器人消息自动删除", "timing", "int",
                 default="300", help="单位秒；0 表示不自动删除"),
     SettingSpec("CHAT_UPDATE_TIME", "会话名称刷新间隔", "timing", "int",

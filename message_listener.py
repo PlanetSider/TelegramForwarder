@@ -10,6 +10,8 @@ from telethon.tl.types import ChannelParticipantsAdmins
 from managers.state_manager import state_manager
 from telethon.tl import types
 from filters.process import process_forward_rule
+from enums.enums import HandleMode
+from utils.forward_batcher import batcher
 # 加载环境变量
 load_dotenv()
 
@@ -21,7 +23,25 @@ PROCESSED_GROUPS = set()
 
 BOT_ID = None
 
-async def setup_listeners(user_client, bot_client):
+async def _should_merge(event, rule, seconds: float) -> bool:
+    """这条消息是否进入「合并窗口」。"""
+    if seconds <= 0:
+        return False
+    message = getattr(event, "message", None)
+    if message is None:
+        return False
+    if getattr(message, "grouped_id", None):
+        return False
+    if getattr(message, "media", None):
+        return False
+    if not (getattr(message, "text", "") or "").strip():
+        return False
+    if getattr(rule, "handle_mode", None) == HandleMode.EDIT:
+        return False
+    return True
+
+
+def setup_listeners(user_client, bot_client):
     """
     设置消息监听器
     
@@ -144,6 +164,12 @@ async def handle_user_message(event, user_client, bot_client):
         # 添加日志：处理规则
         logger.info(f'找到 {len(rules)} 条转发规则')
         
+        # 合并窗口（秒）：0 表示不合并，逐条转发
+        try:
+            batch_seconds = float(os.getenv("FORWARD_BATCH_SECONDS", "0") or 0)
+        except (TypeError, ValueError):
+            batch_seconds = 0.0
+
         # 处理每条转发规则
         for rule in rules:
             if not rule.enable_rule:
@@ -153,7 +179,13 @@ async def handle_user_message(event, user_client, bot_client):
             logger.info(f'处理转发规则 ID: {rule.id} (从 {source_chat.name} 转发到: {target_name})')
             if rule.use_bot:
                 # 直接使用过滤器模块中的process_forward_rule函数
-                await process_forward_rule(bot_client, event, str(chat_id), rule)
+                if _should_merge(event, rule, batch_seconds):
+                    await batcher.add(
+                        bot_client, event, str(chat_id), rule, batch_seconds,
+                        chat=source_chat, sender=getattr(event, "sender", None),
+                    )
+                else:
+                    await process_forward_rule(bot_client, event, str(chat_id), rule)
             else:
                 await user_handler.process_forward_rule(user_client, event, str(chat_id), rule)
         

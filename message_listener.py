@@ -23,7 +23,7 @@ PROCESSED_GROUPS = set()
 
 BOT_ID = None
 
-async def _should_merge(event, rule, seconds: float) -> bool:
+def _should_merge(event, rule, seconds: float) -> bool:
     """这条消息是否进入「合并窗口」。"""
     if seconds <= 0:
         return False
@@ -41,7 +41,7 @@ async def _should_merge(event, rule, seconds: float) -> bool:
     return True
 
 
-def setup_listeners(user_client, bot_client):
+async def setup_listeners(user_client, bot_client):
     """
     设置消息监听器
     

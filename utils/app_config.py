@@ -130,9 +130,9 @@ SETTINGS: List[SettingSpec] = [
 
     # ---------------------------------------------------------------- 超时与批量
     SettingSpec("FORWARD_BATCH_SECONDS", "转发合并间隔", "timing", "int",
-                default="0", restart=True,
-                help="大于 0 时开启合并：间隔内收到的多条纯文本消息会合成一条发出，"
-                     "填 0 关闭（逐条转发）。单位秒。仅对「使用机器人」的规则生效，"
+                default="10", restart=True,
+                help="默认 10 秒。间隔内收到的多条纯文本消息会合成一条发出；"
+                     "填 0 关闭合并（逐条立即转发）。单位秒。仅对「使用机器人」的规则生效，"
                      "带媒体的消息不参与合并"),
 
     SettingSpec("BOT_MESSAGE_DELETE_TIMEOUT", "机器人消息自动删除", "timing", "int",

@@ -242,7 +242,7 @@ async def send_feishu_webhook(
         async with _new_client(timeout) as client:
             response = await client.post(target.webhook_url, json=payload)
     except Exception as exc:
-        return False, f"请求失败: {exc}"
+        return False, f"请求失败: {type(exc).__name__}: {exc}".rstrip(": ")
 
     if response.status_code != 200:
         return False, f"HTTP {response.status_code}: {response.text[:200]}"

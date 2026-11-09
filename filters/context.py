@@ -60,6 +60,9 @@ class MessageContext:
         
         # 记录已转发的消息
         self.forwarded_messages = []
+        # 推送（飞书/Apprise）的结果：None 表示没走推送，True/False 表示成功与否
+        self.push_ok = None
+        self.push_detail = None
         
         # 评论区链接
         self.comment_link = None

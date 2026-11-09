@@ -410,9 +410,12 @@ class TargetFilter(BaseFilter):
             if ok:
                 where = f"群 {chat_id}" if chat_id else "创建者私聊"
                 logger.info(f"已通过「{label}」推送到{where}")
+                context.push_ok = True
             else:
                 logger.error(f"「{label}」推送失败: {detail}")
                 context.errors.append(f"{label}推送失败: {detail}")
+                context.push_ok = False
+                context.push_detail = detail
         except Exception as exc:
             logger.exception("飞书应用机器人推送异常")
             context.errors.append(f"飞书机器人推送出错: {exc}")
@@ -463,10 +466,14 @@ class TargetFilter(BaseFilter):
                     ok, detail = await send_feishu_webhook(feishu_target, text)
                     if ok:
                         logger.info(f'{feishu_target.label}推送发送成功: {feishu_target.masked_url}')
+                        if context is not None:
+                            context.push_ok = True
                     else:
                         logger.error(f'{feishu_target.label}推送发送失败: {feishu_target.masked_url} - {detail}')
                         if context is not None:
                             context.errors.append(f'{feishu_target.label}推送失败: {detail}')
+                            context.push_ok = False
+                            context.push_detail = detail
                     continue
 
                 # 创建Apprise对象
@@ -508,13 +515,19 @@ class TargetFilter(BaseFilter):
                 
                 if send_result:
                     logger.info(f'推送发送成功: {service_url}')
+                    if context is not None:
+                        context.push_ok = True
                 else:
                     logger.error(f'推送发送失败: {service_url}')
                     if context is not None:
                         context.errors.append(f'推送发送失败: {service_url}')
+                        context.push_ok = False
+                        context.push_detail = f'推送发送失败: {service_url}'
                 
             except Exception as e:
                 logger.error(f'发送推送时出错: {str(e)}')
                 logger.error(traceback.format_exc())
                 if context is not None:
                     context.errors.append(f'推送出错: {str(e)}')
+                    context.push_ok = False
+                    context.push_detail = str(e)

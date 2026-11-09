@@ -94,10 +94,18 @@ def _record_history(context, rule) -> None:
         try:
             source = getattr(getattr(rule, 'source_chat', None), 'name', None) or context.chat_id
             target = target_display(rule)
-            ok = bool(context.forwarded_messages) and not context.errors
+            if context.push_ok is not None:
+                ok = bool(context.push_ok) and not context.errors
+            else:
+                ok = bool(context.forwarded_messages) and not context.errors
             detail = '; '.join(context.errors) if context.errors else None
             if not ok and not detail:
-                detail = '未产生转发消息（可能被关键字/媒体规则过滤）'
+                if context.push_ok is False and context.push_detail:
+                    detail = str(context.push_detail)
+                elif context.push_ok is False:
+                    detail = '推送未成功'
+                else:
+                    detail = '未产生转发消息（可能被关键字/媒体规则过滤）'
             record_history(
                 session, 'rule', rule.id,
                 source_label=source, target_label=target,

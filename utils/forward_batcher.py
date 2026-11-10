@@ -108,14 +108,14 @@ class ForwardBatcher:
             bucket["sender"] = sender
 
         if bucket["task"] is None or bucket["task"].done():
-            bucket["task"] = asyncio.create_task(self._flush(key, client, rule, seconds))
+            bucket["task"] = asyncio.create_task(self._flush(key, client, rule.id, seconds))
 
         logger.info(
             "[规则%s] 消息进入合并队列，当前 %s 条，%.1f 秒后统一发送",
             rule.id, len(bucket["items"]), seconds,
         )
 
-    async def _flush(self, key: Tuple[int, str], client, rule, seconds: float) -> None:
+    async def _flush(self, key: Tuple[int, str], client, rule_id: int, seconds: float) -> None:
         try:
             await asyncio.sleep(seconds)
         except asyncio.CancelledError:
@@ -171,12 +171,24 @@ class ForwardBatcher:
             chat_id,
         )
 
+        session = None
         try:
+            from models.models import ForwardRule, get_session
+
+            session = get_session()
+            rule = session.query(ForwardRule).get(rule_id)
+            if rule is None:
+                logger.warning("[规则%s] 规则已不存在，跳过合并发送", rule_id)
+                return
+
             from filters.process import process_forward_rule
             await process_forward_rule(client, agg_event, chat_id, rule)
         except Exception as exc:  # noqa: BLE001
             logger.error("[规则%s] 合并消息发送失败: %s", rule_id, exc)
             logger.exception(exc)
+        finally:
+            if session is not None:
+                session.close()
 
 
 batcher = ForwardBatcher()

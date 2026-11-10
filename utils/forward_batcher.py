@@ -54,6 +54,11 @@ class _AggEvent:
         self.sender_id = getattr(sender, "id", None)
         self.is_media_group = False
 
+    @property
+    def sender(self):
+        """部分过滤器直接读 event.sender，这里补一个只读属性。"""
+        return self._sender
+
     async def get_chat(self):
         return self.chat
 

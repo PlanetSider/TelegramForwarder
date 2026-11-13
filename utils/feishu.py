@@ -29,6 +29,8 @@ from urllib.parse import parse_qs, urlparse
 
 import httpx
 
+from utils.feishu_card import build_card, is_webhook_v2, strip_html
+
 logger = logging.getLogger(__name__)
 
 FEISHU_WEBHOOK_BASE = "https://open.feishu.cn/open-apis/bot/v2/hook/"
@@ -218,18 +220,32 @@ async def send_feishu_webhook(
     target: FeishuTarget,
     text: str,
     timeout: float = 15.0,
+    title: Optional[str] = None,
+    as_card: bool = True,
 ) -> tuple[bool, str]:
-    """发送一条纯文本消息，返回 ``(是否成功, 说明)``。"""
-    body = to_plain_text(text or "")
-    if not body.strip():
+    """发送一条消息，返回 ``(是否成功, 说明)``。
+
+    V2 地址默认发交互卡片，正文按 Markdown 渲染；V1 地址只支持纯文本，
+    会自动降级。webhook 卡片没有 message_id、也收不到交互回调，所以这里
+    只用卡片的展示能力，不放按钮。
+    """
+    raw = (text or "").strip()
+    if not raw:
         return False, "内容为空，未发送"
 
-    body = _truncate(body)
-
-    payload = {
-        "msg_type": "text",
-        "content": {"text": body},
-    }
+    if as_card and is_webhook_v2(target.webhook_url):
+        payload = {
+            "msg_type": "interactive",
+            "card": build_card(title, _truncate(strip_html(raw))),
+        }
+    else:
+        body = _truncate(to_plain_text(raw))
+        if not body.strip():
+            return False, "内容为空，未发送"
+        payload = {
+            "msg_type": "text",
+            "content": {"text": body},
+        }
 
     if target.secret:
         timestamp = int(time.time())
@@ -263,4 +279,14 @@ async def send_feishu_webhook(
     detail = f"code={code} msg={msg}"
     if hint:
         detail = f"{detail}（{hint}）"
+
+    if as_card and is_webhook_v2(target.webhook_url):
+        logger.warning(f"卡片发送失败，降级为纯文本重试: {detail}")
+        ok, fallback_detail = await send_feishu_webhook(
+            target, text, timeout=timeout, title=title, as_card=False
+        )
+        if ok:
+            return True, "ok（卡片失败已降级为文本）"
+        return False, f"{detail}；降级文本也失败: {fallback_detail}"
+
     return False, detail

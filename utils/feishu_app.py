@@ -16,6 +16,8 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import httpx
 
+from utils.feishu_card import build_card, strip_html
+
 logger = logging.getLogger(__name__)
 
 FEISHU_DOMAIN = "https://open.feishu.cn"
@@ -145,11 +147,13 @@ async def list_chats(bot: Any, timeout: float = 20.0) -> List[Dict[str, Any]]:
 
 async def send_text(
     bot: Any, chat_id: str, text: str, timeout: float = 20.0,
-    receive_id_type: str = "chat_id",
+    receive_id_type: str = "chat_id", title: Optional[str] = None,
+    as_card: bool = True,
 ) -> Tuple[bool, str]:
-    """用应用机器人发一条纯文本。返回 (是否成功, 说明)。
+    """用应用机器人发一条消息。返回 (是否成功, 说明)。
 
     receive_id_type 决定 chat_id 的含义：chat_id 是群，open_id 是个人。
+    默认发交互卡片（正文按 Markdown 渲染），``as_card=False`` 时退回纯文本。
     """
     body_text = _truncate(text)
     if not body_text:
@@ -162,11 +166,19 @@ async def send_text(
         return False, "获取 tenant_access_token 失败（检查 App ID / Secret / 平台）"
 
     url = _domain(_attr(bot, "platform")) + "/open-apis/im/v1/messages"
-    payload = {
-        "receive_id": chat_id,
-        "msg_type": "text",
-        "content": json.dumps({"text": body_text}, ensure_ascii=False),
-    }
+    if as_card:
+        card = build_card(title, strip_html(body_text))
+        payload = {
+            "receive_id": chat_id,
+            "msg_type": "interactive",
+            "content": json.dumps(card, ensure_ascii=False),
+        }
+    else:
+        payload = {
+            "receive_id": chat_id,
+            "msg_type": "text",
+            "content": json.dumps({"text": body_text}, ensure_ascii=False),
+        }
     try:
         async with _new_client(timeout) as client:
             resp = await client.post(
@@ -181,12 +193,29 @@ async def send_text(
 
     if data.get("code") == 0:
         return True, "ok"
-    return False, f"{data.get('code')} {data.get('msg') or '发送失败'}"
+
+    detail = f"{data.get('code')} {data.get('msg') or '发送失败'}"
+    if as_card:
+        logger.warning(f"卡片发送失败，降级为纯文本重试: {detail}")
+        ok, fallback_detail = await send_text(
+            bot, chat_id, text, timeout=timeout,
+            receive_id_type=receive_id_type, title=title, as_card=False,
+        )
+        if ok:
+            return True, "ok（卡片失败已降级为文本）"
+        return False, f"{detail}；降级文本也失败: {fallback_detail}"
+    return False, detail
 
 
-async def send_to_owner(bot: Any, text: str, timeout: float = 20.0) -> Tuple[bool, str]:
+async def send_to_owner(
+    bot: Any, text: str, timeout: float = 20.0,
+    title: Optional[str] = None, as_card: bool = True,
+) -> Tuple[bool, str]:
     """发给扫码创建者本人（私聊）。机器人还没被拉进任何群时走这条。"""
     open_id = (getattr(bot, "owner_open_id", "") or "").strip()
     if not open_id:
         return False, "这个机器人没有记录创建者，无法直接发送；请把它拉进群后选择群"
-    return await send_text(bot, open_id, text, timeout=timeout, receive_id_type="open_id")
+    return await send_text(
+        bot, open_id, text, timeout=timeout, receive_id_type="open_id",
+        title=title, as_card=as_card,
+    )

@@ -402,10 +402,10 @@ class TargetFilter(BaseFilter):
 
             label = feishu_app.bot_label(bot)
             if chat_id:
-                ok, detail = await feishu_app.send_text(bot, chat_id, text)
+                ok, detail = await feishu_app.send_text(bot, chat_id, text, title="Telegram 转发")
             else:
                 # 没选群：直接私聊扫码创建者（机器人没加群时唯一的去处）
-                ok, detail = await feishu_app.send_to_owner(bot, text)
+                ok, detail = await feishu_app.send_to_owner(bot, text, title="Telegram 转发")
 
             if ok:
                 where = f"群 {chat_id}" if chat_id else "创建者私聊"
@@ -463,7 +463,7 @@ class TargetFilter(BaseFilter):
                     if attachment or all_attachments:
                         logger.warning(f'{feishu_target.label}自定义机器人不支持附件，已降级为纯文本推送')
                     text = body or f"收到{len(all_attachments or [])}个媒体文件"
-                    ok, detail = await send_feishu_webhook(feishu_target, text)
+                    ok, detail = await send_feishu_webhook(feishu_target, text, title="Telegram 转发")
                     if ok:
                         logger.info(f'{feishu_target.label}推送发送成功: {feishu_target.masked_url}')
                         if context is not None:

@@ -27,6 +27,19 @@ class InitFilter(BaseFilter):
         rule = context.rule
         event = context.event
 
+        # 记录来源名称（飞书卡片标题用），取不到就留空
+        try:
+            chat = await event.get_chat()
+            context.source_name = (
+                getattr(chat, "title", None)
+                or getattr(chat, "first_name", None)
+                or getattr(chat, "username", None)
+                or ""
+            )
+        except Exception as exc:
+            logger.debug(f"获取来源名称失败: {exc}")
+            context.source_name = ""
+
         # logger.info(f"InitFilter处理消息前，context: {context.__dict__}")
         try:
             #处理媒体组消息

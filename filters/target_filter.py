@@ -378,10 +378,8 @@ class TargetFilter(BaseFilter):
 
         rule = context.rule
 
-        text = ""
-        if rule.is_original_sender and context.sender_info:
-            text += context.sender_info
-        text += context.message_text or ""
+        # 飞书卡片不显示发送者那一行（标题已经是来源频道）
+        text = context.message_text or ""
         if rule.is_original_time and context.time_info:
             text += context.time_info
         if rule.is_original_link and context.original_link:
@@ -401,11 +399,12 @@ class TargetFilter(BaseFilter):
                 return
 
             label = feishu_app.bot_label(bot)
+            card_title = (getattr(context, "source_name", "") or "").strip() or "Telegram 转发"
             if chat_id:
-                ok, detail = await feishu_app.send_text(bot, chat_id, text, title="Telegram 转发")
+                ok, detail = await feishu_app.send_text(bot, chat_id, text, title=card_title)
             else:
                 # 没选群：直接私聊扫码创建者（机器人没加群时唯一的去处）
-                ok, detail = await feishu_app.send_to_owner(bot, text, title="Telegram 转发")
+                ok, detail = await feishu_app.send_to_owner(bot, text, title=card_title)
 
             if ok:
                 where = f"群 {chat_id}" if chat_id else "创建者私聊"
@@ -463,7 +462,13 @@ class TargetFilter(BaseFilter):
                     if attachment or all_attachments:
                         logger.warning(f'{feishu_target.label}自定义机器人不支持附件，已降级为纯文本推送')
                     text = body or f"收到{len(all_attachments or [])}个媒体文件"
-                    ok, detail = await send_feishu_webhook(feishu_target, text, title="Telegram 转发")
+                    # 卡片不显示发送者那一行（标题已经是来源频道）
+                    _si = (getattr(context, "sender_info", "") or "").strip() if context is not None else ""
+                    if _si and text.lstrip().startswith(_si):
+                        text = text.lstrip()[len(_si):].lstrip("\n ")
+                    _title = ((getattr(context, "source_name", "") or "").strip()
+                              if context is not None else "") or "Telegram 转发"
+                    ok, detail = await send_feishu_webhook(feishu_target, text, title=_title)
                     if ok:
                         logger.info(f'{feishu_target.label}推送发送成功: {feishu_target.masked_url}')
                         if context is not None:

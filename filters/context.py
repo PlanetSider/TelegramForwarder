@@ -34,6 +34,8 @@ class MessageContext:
         
         # 记录发送者信息
         self.sender_info = ''
+        # 来源频道/群名称，用于飞书卡片标题
+        self.source_name = ''
         
         # 记录时间信息
         self.time_info = ''

@@ -478,6 +478,25 @@ async def _handle_run_summary(request: web.Request) -> web.Response:
     return web.json_response({"ok": True})
 
 
+async def _handle_restart(request: web.Request) -> web.Response:
+    """重启服务：让主进程退出，Docker 的 restart 策略会把它拉起来。
+
+    先回响应再退出，避免前端拿到连接重置；数据库里的配置在启动时由
+    bootstrap_runtime_env() 重新注入，所以重启即可让改动生效。
+    """
+    loop = asyncio.get_running_loop()
+
+    def _exit_soon() -> None:
+        logger.warning("收到重启请求，主进程即将退出（容器会被自动拉起）")
+        try:
+            logging.shutdown()
+        finally:
+            os._exit(0)
+
+    loop.call_later(0.8, _exit_soon)
+    return web.json_response({"ok": True, "message": "服务正在重启，约 10 秒后可用"})
+
+
 async def _handle_save_config(request: web.Request) -> web.Response:
     """保存配置项（向导与配置页共用），只接受白名单内的键。"""
     from models.models import get_session
@@ -518,6 +537,7 @@ async def start_bridge(host: str = DEFAULT_HOST, port: int = DEFAULT_PORT):
     app.router.add_post("/internal/setup/config", _handle_save_config)
 
     app.router.add_post("/internal/summaries/run", _handle_run_summary)
+    app.router.add_post("/internal/restart", _handle_restart)
 
     runner = web.AppRunner(app, access_log=None)
     try:

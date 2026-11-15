@@ -115,9 +115,9 @@ SETTINGS: List[SettingSpec] = [
                 default="false", help="开启后机器人可以删除自己发出的提示消息"),
 
     # ---------------------------------------------------------------- 界面与分页
-    SettingSpec("RULES_PER_PAGE", "规则每页条数", "ui", "int", default="20"),
-    SettingSpec("PUSH_CHANNEL_PER_PAGE", "推送渠道每页条数", "ui", "int", default="10"),
-    SettingSpec("KEYWORDS_PER_PAGE", "关键字每页条数", "ui", "int", default="50"),
+    SettingSpec("RULES_PER_PAGE", "规则每页条数", "ui", "int", default="20", restart=True),
+    SettingSpec("PUSH_CHANNEL_PER_PAGE", "推送渠道每页条数", "ui", "int", default="10", restart=True),
+    SettingSpec("KEYWORDS_PER_PAGE", "关键字每页条数", "ui", "int", default="50", restart=True),
     SettingSpec("AI_MODELS_PER_PAGE", "模型每页条数", "ui", "int", default="10"),
     SettingSpec("SUMMARY_TIME_ROWS", "总结时间 行数", "ui", "int", default="10"),
     SettingSpec("SUMMARY_TIME_COLS", "总结时间 列数", "ui", "int", default="6"),
@@ -130,13 +130,13 @@ SETTINGS: List[SettingSpec] = [
 
     # ---------------------------------------------------------------- 超时与批量
     SettingSpec("FORWARD_BATCH_SECONDS", "转发合并间隔", "timing", "int",
-                default="10", restart=True,
+                default="10",
                 help="默认 10 秒。间隔内收到的多条纯文本消息会合成一条发出；"
                      "填 0 关闭合并（逐条立即转发）。单位秒。仅对「使用机器人」的规则生效，"
                      "带媒体的消息不参与合并"),
 
     SettingSpec("BOT_MESSAGE_DELETE_TIMEOUT", "机器人消息自动删除", "timing", "int",
-                default="300", help="单位秒；0 表示不自动删除"),
+                default="300", restart=True, help="单位秒；0 表示不自动删除"),
     SettingSpec("CHAT_UPDATE_TIME", "会话名称刷新间隔", "timing", "int",
                 default="3600", help="单位秒"),
     SettingSpec("SUMMARY_BATCH_SIZE", "总结分批大小", "timing", "int", default="20"),

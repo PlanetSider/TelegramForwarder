@@ -980,6 +980,22 @@ async def admin_api_setup_verify_password(request: Request, user=Depends(get_cur
     return JSONResponse(result, status_code=200 if result.get("ok") else 400)
 
 
+@router.post("/api/restart")
+async def admin_api_restart(user=Depends(get_current_user)):
+    """重启服务，让启动时读取的配置（端口、路径、凭据等）生效。"""
+    if not user:
+        return _fail("未登录", 401)
+
+    from rss.app.services import bridge_client
+
+    result = await bridge_client.restart()
+    if result is None:
+        return JSONResponse(
+            {"ok": False, "error": "主进程未响应（可能已在重启中）"}, status_code=503
+        )
+    return JSONResponse({"ok": True, "message": "服务正在重启，约 10 秒后可用"})
+
+
 @router.post("/api/config")
 @router.post("/api/setup/config")
 async def admin_api_setup_config(request: Request, user=Depends(get_current_user)):

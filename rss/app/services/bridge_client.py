@@ -124,3 +124,8 @@ def is_available() -> bool:
 async def run_summary(task_id: int):
     """让主进程立即执行一个总结任务。"""
     return await _post("/internal/summaries/run", {"task_id": int(task_id)})
+
+
+async def restart() -> Optional[Dict[str, Any]]:
+    """请求主进程重启（容器会被 docker 的 restart 策略拉起）。"""
+    return await _post("/internal/restart", {}, timeout=5.0)

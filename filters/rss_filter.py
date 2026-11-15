@@ -9,7 +9,7 @@ from datetime import datetime
 import shutil
 from filters.base_filter import BaseFilter
 import uuid
-from utils.constants import TEMP_DIR, RSS_MEDIA_DIR, get_rule_media_dir,RSS_HOST,RSS_PORT,RSS_ENABLED
+from utils.constants import TEMP_DIR, RSS_MEDIA_DIR, get_rule_media_dir,RSS_HOST,RSS_PORT,rss_enabled
 from models.models import get_session
 from utils.common import get_db_ops
 
@@ -43,7 +43,7 @@ class RSSFilter(BaseFilter):
     async def _process(self, context):
         """处理RSS过滤器逻辑"""
         
-        if not RSS_ENABLED:
+        if not rss_enabled():
             logger.info("RSS未启用，跳过RSS处理")
             return True
         

@@ -106,3 +106,31 @@
   if (mq.addEventListener) mq.addEventListener('change', onChange);
   else if (mq.addListener) mq.addListener(onChange);
 })();
+
+/* 重启服务：确认后调接口，等服务回来再自动刷新页面 */
+function restartService() {
+  if (!confirm('确定要重启服务吗？正在处理的消息会中断，约 10 秒后恢复。')) return;
+  fetch('/admin/api/restart', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })
+    .then(function (r) { return r.json().catch(function () { return {}; }); })
+    .then(function (data) {
+      if (data && data.ok === false) {
+        alert('重启请求失败：' + (data.error || '未知原因'));
+        return;
+      }
+      var tip = document.createElement('div');
+      tip.style.cssText = 'position:fixed;left:50%;top:24px;transform:translateX(-50%);z-index:9999;background:#111;color:#fff;padding:10px 16px;border-radius:8px;font-size:13px';
+      tip.textContent = '服务正在重启，恢复后会自动刷新…';
+      document.body.appendChild(tip);
+      waitForRestart(0);
+    })
+    .catch(function () { alert('重启请求发送失败，请检查网络'); });
+}
+
+function waitForRestart(attempt) {
+  if (attempt > 60) { location.reload(); return; }
+  setTimeout(function () {
+    fetch('/admin/login', { method: 'GET', cache: 'no-store' })
+      .then(function (r) { if (r.ok) location.reload(); else waitForRestart(attempt + 1); })
+      .catch(function () { waitForRestart(attempt + 1); });
+  }, 1000);
+}

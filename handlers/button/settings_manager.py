@@ -3,7 +3,7 @@ from utils.settings import load_ai_models
 from enums.enums import ForwardMode, MessageMode, PreviewMode, AddMode, HandleMode
 from models.models import get_session
 from telethon import Button
-from utils.constants import RSS_ENABLED, UFB_ENABLED
+from utils.constants import rss_enabled, ufb_enabled
 from utils.common import target_display
 
 AI_MODELS = load_ai_models()
@@ -489,7 +489,7 @@ async def create_buttons(rule):
             )
         ])
 
-        if not RSS_ENABLED:
+        if not rss_enabled():
             # 处理模式
             buttons.append([
                 Button.inline(
@@ -595,7 +595,7 @@ async def create_buttons(rule):
                 )
             ])
 
-            if UFB_ENABLED:
+            if ufb_enabled():
                 buttons.append([
                     Button.inline(
                         f"☁️ UFB同步: {RULE_SETTINGS['is_ufb']['values'][rule.is_ufb]}",

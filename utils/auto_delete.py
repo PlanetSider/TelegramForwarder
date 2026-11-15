@@ -2,7 +2,7 @@ import asyncio
 import os
 import logging
 from functools import wraps
-from utils.constants import BOT_MESSAGE_DELETE_TIMEOUT, USER_MESSAGE_DELETE_ENABLE
+from utils.constants import BOT_MESSAGE_DELETE_TIMEOUT, user_message_delete_enabled
 logger = logging.getLogger(__name__)
 
 # 从环境变量获取默认超时时间
@@ -108,7 +108,7 @@ async def async_delete_user_message(client, chat_id, message_id, seconds):
         message_id: 消息ID
         seconds: 等待多少秒后删除, 0表示立即删除, -1表示不删除
     """
-    if not USER_MESSAGE_DELETE_ENABLE:
+    if not user_message_delete_enabled():
         return
     
     if seconds == -1:  # -1 表示不删除

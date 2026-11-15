@@ -32,7 +32,22 @@ RSS_BASE_URL = os.environ.get('RSS_BASE_URL', None)
 # RSS媒体文件的基础URL，用于生成媒体链接，如果未设置，则使用请求的URL
 RSS_MEDIA_BASE_URL = os.getenv('RSS_MEDIA_BASE_URL', '')
 
-RSS_ENABLED = env_bool('RSS_ENABLED')
+# 这三个开关在运行期会被反复读取，做成函数而不是模块级常量：
+# 模块级常量在 import 时就固化了，WebUI 保存后必须重启才生效；
+# 函数每次访问都会重新读 os.environ（主进程保存配置时会同步写入），保存即生效。
+def rss_enabled() -> bool:
+    """是否启用 RSS 子系统（重启后才会真正 fork 子进程）。"""
+    return env_bool('RSS_ENABLED')
+
+
+def ufb_enabled() -> bool:
+    """是否启用 UFB 联动。"""
+    return env_bool('UFB_ENABLED')
+
+
+def user_message_delete_enabled() -> bool:
+    """用户账号模式下是否删除原消息。"""
+    return env_bool('USER_MESSAGE_DELETE_ENABLE')
 
 RULES_PER_PAGE = int(os.getenv('RULES_PER_PAGE', 20))
 
@@ -85,10 +100,10 @@ LOG_BACKUP_COUNT = 3
 BOT_MESSAGE_DELETE_TIMEOUT = int(os.getenv("BOT_MESSAGE_DELETE_TIMEOUT", 300))
 
 # 自动删除用户发送的指令消息
-USER_MESSAGE_DELETE_ENABLE = env_bool("USER_MESSAGE_DELETE_ENABLE")
+
 
 # 是否启用UFB
-UFB_ENABLED = env_bool("UFB_ENABLED")
+
 
 # 菜单标题
 AI_SETTINGS_TEXT = """

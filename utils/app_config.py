@@ -137,8 +137,10 @@ SETTINGS: List[SettingSpec] = [
 
     SettingSpec("BOT_MESSAGE_DELETE_TIMEOUT", "机器人消息自动删除", "timing", "int",
                 default="300", restart=True, help="单位秒；0 表示不自动删除"),
-    SettingSpec("CHAT_UPDATE_TIME", "会话名称刷新间隔", "timing", "int",
-                default="3600", help="单位秒"),
+    SettingSpec("CHAT_UPDATE_TIME", "会话名称刷新时间", "timing", "text",
+                default="03:00", restart=True,
+                help="HH:MM 表示每天该时刻刷新一次（默认 03:00）；"
+                     "也可以填纯数字，表示每隔多少秒刷新一次（如 3600 = 每小时）"),
     SettingSpec("SUMMARY_BATCH_SIZE", "总结分批大小", "timing", "int", default="20"),
     SettingSpec("SUMMARY_BATCH_DELAY", "总结分批间隔", "timing", "int",
                 default="2", help="单位秒"),

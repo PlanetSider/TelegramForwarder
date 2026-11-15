@@ -38,8 +38,22 @@ class ChatUpdater:
             logger.error(f"错误详情: {traceback.format_exc()}")
     
     def _get_next_run_time(self, now, target_time):
-        """计算下一次运行时间"""
-        hour, minute = map(int, target_time.split(':'))
+        """计算下一次运行时间。
+
+        支持两种写法：
+        - "HH:MM"：每天这个时刻跑一次（默认 03:00）；
+        - 纯数字：按秒计的间隔（如 3600 = 每小时），兼容旧配置。
+        """
+        raw = (target_time or "").strip()
+        if ":" not in raw:
+            try:
+                seconds = int(raw)
+            except (TypeError, ValueError):
+                seconds = 0
+            if seconds <= 0:
+                seconds = 3600
+            return now + timedelta(seconds=seconds)
+        hour, minute = map(int, raw.split(':'))
         next_time = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
         
         if next_time <= now:

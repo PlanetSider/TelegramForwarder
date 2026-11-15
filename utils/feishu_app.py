@@ -9,6 +9,7 @@
 所以每个机器人单独记 platform。
 """
 
+import asyncio
 import json
 import logging
 import time
@@ -145,7 +146,7 @@ async def list_chats(bot: Any, timeout: float = 20.0) -> List[Dict[str, Any]]:
     return out
 
 
-async def send_text(
+async def _send_text_once(
     bot: Any, chat_id: str, text: str, timeout: float = 20.0,
     receive_id_type: str = "chat_id", title: Optional[str] = None,
     as_card: bool = True,
@@ -197,7 +198,7 @@ async def send_text(
     detail = f"{data.get('code')} {data.get('msg') or '发送失败'}"
     if as_card:
         logger.warning(f"卡片发送失败，降级为纯文本重试: {detail}")
-        ok, fallback_detail = await send_text(
+        ok, fallback_detail = await _send_text_once(
             bot, chat_id, text, timeout=timeout,
             receive_id_type=receive_id_type, title=title, as_card=False,
         )
@@ -219,3 +220,42 @@ async def send_to_owner(
         bot, open_id, text, timeout=timeout, receive_id_type="open_id",
         title=title, as_card=as_card,
     )
+
+
+_RETRY_HINTS = ("frequency limited", "too many request", "rate limit", "timeout", "请求失败")
+
+
+def _is_retryable_detail(detail: str) -> bool:
+    low = (detail or "").lower()
+    if any(h in low for h in _RETRY_HINTS):
+        return True
+    try:
+        code = int(str(detail).split()[0])
+    except (ValueError, IndexError):
+        return False
+    return code in {9499, 11232, 99991663, 500, 502, 503, 504}
+
+
+async def send_text(
+    bot: Any, chat_id: str, text: str, timeout: float = 20.0,
+    receive_id_type: str = "chat_id", title: Optional[str] = None,
+    as_card: bool = True, retries: int = 3,
+) -> Tuple[bool, str]:
+    """带退避重试的发送入口，命中限流/超时会重试。"""
+    last: Tuple[bool, str] = (False, "未发送")
+    for attempt in range(max(1, retries)):
+        ok, detail = await _send_text_once(
+            bot, chat_id, text, timeout=timeout,
+            receive_id_type=receive_id_type, title=title, as_card=as_card,
+        )
+        if ok:
+            if attempt:
+                return True, f"{detail}（第 {attempt + 1} 次尝试）"
+            return ok, detail
+        last = (ok, detail)
+        if attempt >= retries - 1 or not _is_retryable_detail(detail):
+            break
+        delay = 2 ** attempt
+        logger.warning(f"应用机器人发送失败将重试（{delay}s 后）: {detail}")
+        await asyncio.sleep(delay)
+    return last

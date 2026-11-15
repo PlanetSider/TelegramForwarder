@@ -216,7 +216,7 @@ def _new_client(timeout: float) -> httpx.AsyncClient:
         return httpx.AsyncClient(timeout=timeout, trust_env=False)
 
 
-async def send_feishu_webhook(
+async def _send_feishu_webhook_once(
     target: FeishuTarget,
     text: str,
     timeout: float = 15.0,
@@ -282,7 +282,7 @@ async def send_feishu_webhook(
 
     if as_card and is_webhook_v2(target.webhook_url):
         logger.warning(f"卡片发送失败，降级为纯文本重试: {detail}")
-        ok, fallback_detail = await send_feishu_webhook(
+        ok, fallback_detail = await _send_feishu_webhook_once(
             target, text, timeout=timeout, title=title, as_card=False
         )
         if ok:
@@ -290,3 +290,45 @@ async def send_feishu_webhook(
         return False, f"{detail}；降级文本也失败: {fallback_detail}"
 
     return False, detail
+
+
+# 这些是飞书侧可恢复的错误：限流、瞬时 5xx。命中时退避重试，不要直接丢消息。
+_RETRYABLE_CODES = {9499, 11232, 99991663, 500, 502, 503, 504}
+_RETRYABLE_HINTS = ("too many request", "frequency limited", "rate limit")
+
+
+def _is_retryable(detail: str) -> bool:
+    low = (detail or "").lower()
+    if any(h in low for h in _RETRYABLE_HINTS):
+        return True
+    for code in _RETRYABLE_CODES:
+        if f"code={code}" in low or f"http {code}" in low:
+            return True
+    return "timeout" in low or "请求失败" in detail
+
+
+async def send_feishu_webhook(
+    target: FeishuTarget,
+    text: str,
+    timeout: float = 15.0,
+    title: Optional[str] = None,
+    as_card: bool = True,
+    retries: int = 3,
+) -> tuple[bool, str]:
+    """带退避重试的发送入口。限流/超时会重试 ``retries`` 次。"""
+    last: tuple[bool, str] = (False, "未发送")
+    for attempt in range(max(1, retries)):
+        ok, detail = await _send_feishu_webhook_once(
+            target, text, timeout=timeout, title=title, as_card=as_card
+        )
+        if ok:
+            if attempt:
+                return True, f"{detail}（第 {attempt + 1} 次尝试）"
+            return ok, detail
+        last = (ok, detail)
+        if attempt >= retries - 1 or not _is_retryable(detail):
+            break
+        delay = 2 ** attempt
+        logger.warning(f"发送失败将重试（{delay}s 后，第 {attempt + 2}/{retries} 次）: {detail}")
+        await asyncio.sleep(delay)
+    return last

@@ -27,18 +27,31 @@ class InitFilter(BaseFilter):
         rule = context.rule
         event = context.event
 
-        # 记录来源名称（飞书卡片标题用），取不到就留空
+        # 记录来源名称（飞书卡片标题用）：先用绑定规则时存下的 chats.name，
+        # 它比 event.get_chat() 稳定（频道评论、转发等场景 event.chat 可能不是源频道）。
+        context.source_name = ""
         try:
-            chat = await event.get_chat()
-            context.source_name = (
-                getattr(chat, "title", None)
-                or getattr(chat, "first_name", None)
-                or getattr(chat, "username", None)
-                or ""
-            )
+            from models.models import get_session as _gs, Chat as _Chat
+            _s = _gs()
+            try:
+                _src = _s.query(_Chat).get(rule.source_chat_id) if rule.source_chat_id else None
+                context.source_name = (getattr(_src, "name", "") or "").strip()
+            finally:
+                _s.close()
         except Exception as exc:
-            logger.debug(f"获取来源名称失败: {exc}")
-            context.source_name = ""
+            logger.debug(f"从数据库取来源名称失败: {exc}")
+
+        if not context.source_name:
+            try:
+                chat = await event.get_chat()
+                context.source_name = (
+                    getattr(chat, "title", None)
+                    or getattr(chat, "first_name", None)
+                    or getattr(chat, "username", None)
+                    or ""
+                ).strip()
+            except Exception as exc:
+                logger.debug(f"获取来源名称失败: {exc}")
 
         # logger.info(f"InitFilter处理消息前，context: {context.__dict__}")
         try:

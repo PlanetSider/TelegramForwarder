@@ -399,7 +399,16 @@ class TargetFilter(BaseFilter):
                 return
 
             label = feishu_app.bot_label(bot)
-            card_title = (getattr(context, "source_name", "") or "").strip() or "Telegram 转发"
+            # 标题用来源频道名：context 里没有就当场查 chats 表（绑定时写入，最稳）
+            card_title = (getattr(context, "source_name", "") or "").strip()
+            if not card_title:
+                try:
+                    from models.models import Chat as _Chat
+                    _src = session.query(_Chat).get(rule.source_chat_id) if rule.source_chat_id else None
+                    card_title = (getattr(_src, "name", "") or "").strip()
+                except Exception as exc:
+                    logger.debug(f"查来源名称失败: {exc}")
+            card_title = card_title or "Telegram 转发"
             if chat_id:
                 ok, detail = await feishu_app.send_text(bot, chat_id, text, title=card_title)
             else:
@@ -466,6 +475,15 @@ class TargetFilter(BaseFilter):
                     _si = (getattr(context, "sender_info", "") or "").strip() if context is not None else ""
                     if _si and text.lstrip().startswith(_si):
                         text = text.lstrip()[len(_si):].lstrip("\n ")
+                    # 纯媒体消息剥掉发送者后可能只剩时间，补一句说明免得卡片是空的
+                    _media_n = len(all_attachments or [])
+                    _has_body = any(
+                        not line.strip().isdigit() and "." not in line.strip() or len(line.strip()) > 12
+                        for line in (text or "").splitlines()
+                    )
+                    if not (text or "").strip() or not _has_body:
+                        _note = f"（收到 {_media_n} 个媒体文件，飞书暂不支持展示）" if _media_n else "（媒体消息，飞书暂不支持展示附件）"
+                        text = _note + ("\n\n" + text.strip() if (text or "").strip() else "")
                     _title = ((getattr(context, "source_name", "") or "").strip()
                               if context is not None else "") or "Telegram 转发"
                     ok, detail = await send_feishu_webhook(feishu_target, text, title=_title)

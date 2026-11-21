@@ -291,13 +291,24 @@ class RSSFilter(BaseFilter):
             logger.error(f"获取消息链接时出错: {str(e)}")
             return ""
     
+    # 媒体分类只按扩展名和 MIME 判断，和 rule_storage 的统计口径保持一致
+    _IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".heic", ".heif", ".svg", ".avif"}
+    _VIDEO_EXTS = {".mp4", ".mkv", ".avi", ".mov", ".webm", ".flv", ".m4v", ".ts", ".wmv", ".mpeg", ".mpg"}
+
     @staticmethod
-    def _rule_media_cleared_at(context, rule_id):
-        """规则上一次清理媒体的时间（UTC naive）；从未清理返回 None。"""
+    def _rule_media_cleared_at(context, rule_id, kind="images"):
+        """规则上一次清理该类型媒体的时间（UTC naive）；从未清理返回 None。
+
+        旧版本只有一个 media_cleared_at，新列没值时用它兜底，避免升级后重复补抓。
+        """
+        attr = "images_cleared_at" if kind == "images" else "videos_cleared_at"
         rule = getattr(context, "rule", None) if context is not None else None
-        value = getattr(rule, "media_cleared_at", None) if rule is not None else None
-        if value is not None:
-            return value
+        if rule is not None:
+            value = getattr(rule, attr, None)
+            if value is None:
+                value = getattr(rule, "media_cleared_at", None)
+            if value is not None:
+                return value
         if not rule_id:
             return None
         try:
@@ -305,11 +316,44 @@ class RSSFilter(BaseFilter):
             session = get_session()
             try:
                 row = session.query(ForwardRule).get(rule_id)
-                return getattr(row, "media_cleared_at", None) if row else None
+                if row is None:
+                    return None
+                value = getattr(row, attr, None)
+                if value is None:
+                    value = getattr(row, "media_cleared_at", None)
+                return value
             finally:
                 session.close()
         except Exception:
             return None
+
+    @classmethod
+    def _document_media_kind(cls, document, file_name):
+        """文档附件归到 images / videos / None（其他附件不参与清理计时）。"""
+        mime = (getattr(document, "mime_type", "") or "").lower()
+        ext = os.path.splitext(file_name or "")[1].lower()
+        if mime.startswith("image/") or ext in cls._IMAGE_EXTS:
+            return "images"
+        if mime.startswith("video/") or ext in cls._VIDEO_EXTS:
+            return "videos"
+        return None
+
+    def _media_cleared_before(self, context, rule_id, kind, message_date):
+        """消息日期早于该类型清理时间则返回 True。"""
+        cleared_at = self._rule_media_cleared_at(context, rule_id, kind)
+        if cleared_at is None or message_date is None:
+            return False
+        try:
+            msg_date = message_date
+            if getattr(msg_date, "tzinfo", None) is not None:
+                msg_date = msg_date.replace(tzinfo=None)
+            cleared = cleared_at
+            if getattr(cleared, "tzinfo", None) is not None:
+                cleared = cleared.replace(tzinfo=None)
+            return msg_date < cleared
+        except Exception as exc:
+            logger.debug(f"比较媒体清理时间失败: {exc}")
+            return False
 
     async def _process_media(self, client, message, context=None, rule_id=None):
         """处理媒体内容"""
@@ -322,22 +366,6 @@ class RSSFilter(BaseFilter):
                     if skipped_msg.id == message.id:
                         logger.info(f"媒体文件 {name or ''} (大小: {size}MB) 已在skipped_media列表中，RSS过滤器跳过下载")
                         return media_list
-
-            # 清理过媒体的规则只抓清理之后的新消息，否则重跑旧文章会把图又下载回来
-            cleared_at = self._rule_media_cleared_at(context, rule_id)
-            if cleared_at is not None and getattr(message, 'date', None) is not None:
-                try:
-                    msg_date = message.date
-                    if getattr(msg_date, 'tzinfo', None) is not None:
-                        msg_date = msg_date.replace(tzinfo=None)
-                    cleared = cleared_at
-                    if getattr(cleared, 'tzinfo', None) is not None:
-                        cleared = cleared.replace(tzinfo=None)
-                    if msg_date < cleared:
-                        logger.info(f"媒体已清理，跳过历史媒体: {getattr(message, 'id', '?')}")
-                        return media_list
-                except Exception as exc:
-                    logger.debug(f"比较媒体清理时间失败: {exc}")
 
             # 处理文档类型
             if hasattr(message, 'document') and message.document:
@@ -361,6 +389,13 @@ class RSSFilter(BaseFilter):
                 # 使用规则特定的媒体目录
                 rule_media_path = self._get_rule_media_path(current_rule_id) if current_rule_id else self.rss_media_path
                 
+                media_kind = self._document_media_kind(message.document, file_name)
+                if media_kind and self._media_cleared_before(
+                    context, current_rule_id, media_kind, getattr(message, 'date', None)
+                ):
+                    logger.info(f"{media_kind} 已清理，跳过历史附件: {getattr(message, 'id', '?')}")
+                    return media_list
+
                 # 下载文件
                 local_path = os.path.join(rule_media_path, file_name)
                 try:
@@ -394,6 +429,10 @@ class RSSFilter(BaseFilter):
                 if current_rule_id is None and context and hasattr(context, 'rule') and hasattr(context.rule, 'id'):
                     current_rule_id = context.rule.id
                 
+                if self._media_cleared_before(context, current_rule_id, "images", getattr(message, 'date', None)):
+                    logger.info(f"图片已清理，跳过历史图片: {message_id}")
+                    return media_list
+
                 # 使用规则特定的媒体目录
                 rule_media_path = self._get_rule_media_path(current_rule_id) if current_rule_id else self.rss_media_path
                 local_path = os.path.join(rule_media_path, f"photo_{message_id}.jpg")
@@ -440,6 +479,10 @@ class RSSFilter(BaseFilter):
                 
                 # 使用规则特定的媒体目录
                 rule_media_path = self._get_rule_media_path(current_rule_id) if current_rule_id else self.rss_media_path
+                if self._media_cleared_before(context, current_rule_id, "videos", getattr(message, 'date', None)):
+                    logger.info(f"视频已清理，跳过历史视频: {message_id}")
+                    return media_list
+
                 local_path = os.path.join(rule_media_path, file_name)
                 
                 try:
@@ -598,6 +641,13 @@ class RSSFilter(BaseFilter):
             
             # 获取规则特定的媒体目录
             rule_media_path = self._get_rule_media_path(rule_id)
+
+            # 媒体组用组内消息的日期判断是否早于清理时间
+            group_date = None
+            if getattr(context, 'event', None) is not None and getattr(context.event, 'message', None) is not None:
+                group_date = getattr(context.event.message, 'date', None)
+            if group_date is None and getattr(context, 'media_group_messages', None):
+                group_date = getattr(context.media_group_messages[0], 'date', None)
             
             # 获取已下载的本地媒体文件
             local_media_files = []
@@ -618,6 +668,14 @@ class RSSFilter(BaseFilter):
                         # 从文件名猜测媒体类型
                         media_type = mimetypes.guess_type(local_file)[0] or "application/octet-stream"
                         filename = os.path.basename(local_file)
+                        media_kind = (
+                            "images" if media_type.startswith("image/")
+                            else "videos" if media_type.startswith("video/")
+                            else None
+                        )
+                        if media_kind and self._media_cleared_before(context, rule_id, media_kind, group_date):
+                            logger.info(f"媒体已清理（{media_kind}），跳过历史媒体组文件: {filename}")
+                            continue
                         
                         # 复制文件到规则特定的RSS媒体目录
                         target_path = os.path.join(rule_media_path, filename)
@@ -671,6 +729,9 @@ class RSSFilter(BaseFilter):
                             if hasattr(msg, 'photo') and msg.photo:
                                 message_id = getattr(msg, 'id', 'unknown')
                                 file_name = f"photo_{message_id}.jpg"
+                                if self._media_cleared_before(context, rule_id, "images", getattr(msg, 'date', None)):
+                                    logger.info(f"图片已清理，跳过历史媒体组图片: {message_id}")
+                                    continue
                                 
                                 try:
                                     # 使用规则特定的媒体目录
@@ -731,6 +792,12 @@ class RSSFilter(BaseFilter):
                                 
                                 file_name = original_name if original_name else f"document_{message_id}"
                                 file_name = self._sanitize_filename(file_name)
+                                media_kind = self._document_media_kind(msg.document, file_name)
+                                if media_kind and self._media_cleared_before(
+                                    context, rule_id, media_kind, getattr(msg, 'date', None)
+                                ):
+                                    logger.info(f"{media_kind} 已清理，跳过历史媒体组附件: {message_id}")
+                                    continue
                                 
                                 try:
                                     # 使用规则特定的媒体目录

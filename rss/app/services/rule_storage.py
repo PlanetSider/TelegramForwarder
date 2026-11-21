@@ -135,13 +135,15 @@ def many_storage(session, rule_ids: Iterable[int]) -> List[Dict[str, Any]]:
     return [rule_storage(session, rid) for rid in rule_ids]
 
 
-def _stamp_media_cleared(session, rule_id: int) -> None:
+def _stamp_media_cleared(session, rule_id: int, kind: str) -> None:
+    """按类型记录清理时间：图片与视频各自独立，互不影响。"""
     from models.models import ForwardRule
 
     rule = session.query(ForwardRule).get(rule_id)
     if rule is None:
         return
-    rule.media_cleared_at = datetime.utcnow()
+    field = "images_cleared_at" if kind == "images" else "videos_cleared_at"
+    setattr(rule, field, datetime.utcnow())
     session.commit()
 
 
@@ -163,8 +165,8 @@ def clear_history(session, rule_id: int) -> Dict[str, Any]:
 def clear_media(session, rule_id: int, kind: str) -> Dict[str, Any]:
     """删掉图片或视频文件。kind 只接受 images / videos。
 
-    清掉之后把 media_cleared_at 记成现在，RSS 过滤器据此只下载新消息的媒体，
-    不会又把旧文章里的图片抓回来。
+    清掉之后只更新该类型自己的清理时间（images_cleared_at / videos_cleared_at），
+    RSS 过滤器据此只下载该类型清理之后的新媒体，另一类不受影响。
     """
     if kind not in ("images", "videos"):
         raise ValueError("只能清理 images 或 videos")
@@ -186,6 +188,6 @@ def clear_media(session, rule_id: int, kind: str) -> Dict[str, Any]:
                 freed += size
                 removed += 1
     if removed:
-        _stamp_media_cleared(session, rule_id)
+        _stamp_media_cleared(session, rule_id, kind)
     invalidate(rule_id)
     return {"removed": removed, "freed": freed}

@@ -113,7 +113,10 @@ class ForwardRule(Base):
     # 置位后入口直接跳过，不再产生无意义的重试与历史；恢复只能手动点「恢复」。
     invalid_at = Column(DateTime, nullable=True)
     invalid_reason = Column(String(255), nullable=True)
-    # 该规则的 RSS 媒体清理时间：文章发布时间早于此值就不再下载图片/视频
+    # 该规则的 RSS 媒体清理时间：图片、视频各自独立计时，消息日期早于各自时间点就不再下载
+    images_cleared_at = Column(DateTime, nullable=True)
+    videos_cleared_at = Column(DateTime, nullable=True)
+    # 旧版统一清理时间点，仅用于兼容读取；新清理只写上面两个字段
     media_cleared_at = Column(DateTime, nullable=True)
 
     # 添加唯一约束
@@ -547,6 +550,8 @@ def migrate_db(engine):
         'invalid_at': 'ALTER TABLE forward_rules ADD COLUMN invalid_at DATETIME DEFAULT NULL',
         'invalid_reason': 'ALTER TABLE forward_rules ADD COLUMN invalid_reason VARCHAR(255) DEFAULT NULL',
         'media_cleared_at': 'ALTER TABLE forward_rules ADD COLUMN media_cleared_at DATETIME DEFAULT NULL',
+        'images_cleared_at': 'ALTER TABLE forward_rules ADD COLUMN images_cleared_at DATETIME DEFAULT NULL',
+        'videos_cleared_at': 'ALTER TABLE forward_rules ADD COLUMN videos_cleared_at DATETIME DEFAULT NULL',
     }
 
     keywords_new_columns = {

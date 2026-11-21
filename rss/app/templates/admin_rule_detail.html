@@ -27,15 +27,26 @@
       {{ rule.source.name if rule.source else '?' }}
       <span style="color:#8c8c8c">→</span>
       {{ rule.target.name if rule.target else '?' }}
-      {% if rule.enable_rule %}<span class="tag ok" style="margin-left:8px">● 启用</span>
+      {% if rule.invalid_at %}<span class="tag err" style="margin-left:8px" title="{{ rule.invalid_reason }}">● 失效</span>
+      {% elif rule.enable_rule %}<span class="tag ok" style="margin-left:8px">● 启用</span>
       {% else %}<span class="tag off" style="margin-left:8px">○ 停用</span>{% endif %}
     </p>
   </div>
   <div class="actions">
+    {% if rule.invalid_at %}
+    <button class="btn" id="btn-recover" type="button">恢复规则</button>
+    {% endif %}
     <a class="btn" href="/admin/rules">返回列表</a>
     <button class="btn primary" id="btn-save" type="button">保存改动</button>
   </div>
 </div>
+
+{% if rule.invalid_at %}
+<div class="note" style="margin-bottom:14px;border-color:#f3c4c4;background:#fdf1f1">
+  <b>规则已失效</b>：{{ rule.invalid_reason or '原因未知' }}。
+  失效期间不会再转发消息。修复转发源或转发目标后，点右上角 <b>恢复规则</b> 重新参与转发。
+</div>
+{% endif %}
 
 <div class="note blue" style="margin-bottom:14px">
   开关类字段改完点右上角 <b>保存改动</b> 生效；列表类（转发目标、关键字、替换）是即时保存的。
@@ -50,6 +61,7 @@
   <button data-tab="push">转发目标</button>
   <button data-tab="rss">RSS</button>
   <button data-tab="adv">高级</button>
+  <button data-tab="storage">存储</button>
 </div>
 
 <!-- ------------------------------------------------------------ 基础 -->
@@ -592,6 +604,43 @@
     </div>
   </div>
 </div>
+
+<!-- ------------------------------------------------------------ 存储 -->
+<div class="tabpane" id="tab-storage">
+  <div class="card">
+    <div class="card-h">
+      <h3>占用空间</h3>
+      <div class="sub" id="storage-total">统计中…</div>
+    </div>
+    <div class="card-b">
+      <div class="grid g3">
+        <div>
+          <div class="hint">数据库（转发历史）</div>
+          <div style="font-size:20px;font-weight:600" id="storage-db">—</div>
+          <div class="hint" id="storage-db-rows">—</div>
+          <button class="btn sm" type="button" data-clear="text" style="margin-top:10px">清理历史</button>
+        </div>
+        <div>
+          <div class="hint">图片</div>
+          <div style="font-size:20px;font-weight:600" id="storage-images">—</div>
+          <div class="hint" id="storage-images-count">—</div>
+          <button class="btn sm" type="button" data-clear="images" style="margin-top:10px">清理图片</button>
+        </div>
+        <div>
+          <div class="hint">视频</div>
+          <div style="font-size:20px;font-weight:600" id="storage-videos">—</div>
+          <div class="hint" id="storage-videos-count">—</div>
+          <button class="btn sm" type="button" data-clear="videos" style="margin-top:10px">清理视频</button>
+        </div>
+      </div>
+      <div class="hint" id="storage-path" style="margin-top:14px"></div>
+      <div class="note" style="margin-top:12px">
+        清理媒体后，该规则只下载清理时间之后的新媒体；清理前文章里的图片不会自动补回。
+        其他类型的附件不计入图片/视频，不会被这两个按钮删除。
+      </div>
+    </div>
+  </div>
+</div>
 {% endblock %}
 
 {% block scripts %}
@@ -727,6 +776,69 @@ async function pickModel() {
         .catch(function (e) { window.toast(e.message, 'error'); });
     });
   });
+
+  /* ---------------------------------------------------- 存储 */
+  function fmtBytes(n) {
+    n = Number(n) || 0;
+    if (n < 1024) return n + ' B';
+    var units = ['KB', 'MB', 'GB', 'TB'], i = -1;
+    do { n /= 1024; i++; } while (n >= 1024 && i < units.length - 1);
+    return n.toFixed(n >= 10 ? 0 : 1) + ' ' + units[i];
+  }
+
+  function renderStorage(s) {
+    if (!s) return;
+    var db = s.database || {}, media = s.media || {};
+    var images = media.images || {}, videos = media.videos || {};
+    document.getElementById('storage-total').textContent = '合计 ' + fmtBytes(s.total || 0);
+    document.getElementById('storage-db').textContent = fmtBytes(db.bytes || 0);
+    document.getElementById('storage-db-rows').textContent = (db.rows || 0) + ' 条历史';
+    document.getElementById('storage-images').textContent = fmtBytes(images.bytes || 0);
+    document.getElementById('storage-images-count').textContent = (images.count || 0) + ' 个文件';
+    document.getElementById('storage-videos').textContent = fmtBytes(videos.bytes || 0);
+    document.getElementById('storage-videos-count').textContent = (videos.count || 0) + ' 个文件';
+    document.getElementById('storage-path').textContent = media.path ? ('媒体目录：' + media.path) : '';
+  }
+
+  function loadStorage() {
+    window.api('GET', '/admin/api/rules/storage?ids=' + RULE_ID)
+      .then(function (data) {
+        var item = ((data && data.items) || [])[0];
+        if (item) renderStorage(item);
+        else document.getElementById('storage-total').textContent = '统计失败';
+      })
+      .catch(function (e) {
+        document.getElementById('storage-total').textContent = '统计失败：' + e.message;
+      });
+  }
+  loadStorage();
+
+  document.querySelectorAll('[data-clear]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var kind = btn.dataset.clear;
+      var label = { text: '转发历史', images: '图片', videos: '视频' }[kind] || kind;
+      if (!confirm('确定清理该规则的' + label + '？此操作不可恢复。')) return;
+      btn.disabled = true;
+      window.api('POST', '/admin/api/rules/' + RULE_ID + '/storage/clear', { kind: kind })
+        .then(function (d) {
+          window.toast('已清理，释放 ' + fmtBytes(d.freed || 0), 'ok');
+          renderStorage(d);
+        })
+        .catch(function (e) { window.toast(e.message, 'err'); })
+        .then(function () { btn.disabled = false; });
+    });
+  });
+
+  /* ---------------------------------------------------- 失效恢复 */
+  var recoverBtn = document.getElementById('btn-recover');
+  if (recoverBtn) {
+    recoverBtn.addEventListener('click', function () {
+      recoverBtn.disabled = true;
+      window.api('POST', '/admin/api/rules/' + RULE_ID + '/recover')
+        .then(function () { window.toast('已恢复，下一轮巡检会重新检查', 'ok'); setTimeout(function () { location.reload(); }, 500); })
+        .catch(function (e) { window.toast(e.message, 'err'); recoverBtn.disabled = false; });
+    });
+  }
 })();
 </script>
 {% endblock %}

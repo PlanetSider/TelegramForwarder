@@ -30,6 +30,7 @@ from models.db_operations import DBOperations
 from scheduler.summary_scheduler import SummaryScheduler
 from scheduler.chat_updater import ChatUpdater
 from scheduler.summary_task_runner import SummaryTaskRunner
+from scheduler.rule_health_checker import RuleHealthChecker
 from handlers.bot_handler import send_welcome_message
 from rss.main import app as rss_app
 from utils.log_config import setup_logging
@@ -54,6 +55,7 @@ db_ops = None
 scheduler = None
 chat_updater = None
 summary_task_runner = None
+rule_health_checker = None
 rss_process = None
 
 # 控制台通过内部桥读取这份状态，避免只显示笼统的“离线”
@@ -233,6 +235,9 @@ async def start_telegram() -> bool:
 
         summary_task_runner = SummaryTaskRunner(user_client, bot_client)
         await summary_task_runner.start()
+
+        rule_health_checker = RuleHealthChecker(user_client, bot_client)
+        await rule_health_checker.start()
 
         await send_welcome_message(bot_client)
 

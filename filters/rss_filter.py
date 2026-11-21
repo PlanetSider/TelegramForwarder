@@ -291,6 +291,26 @@ class RSSFilter(BaseFilter):
             logger.error(f"获取消息链接时出错: {str(e)}")
             return ""
     
+    @staticmethod
+    def _rule_media_cleared_at(context, rule_id):
+        """规则上一次清理媒体的时间（UTC naive）；从未清理返回 None。"""
+        rule = getattr(context, "rule", None) if context is not None else None
+        value = getattr(rule, "media_cleared_at", None) if rule is not None else None
+        if value is not None:
+            return value
+        if not rule_id:
+            return None
+        try:
+            from models.models import get_session, ForwardRule
+            session = get_session()
+            try:
+                row = session.query(ForwardRule).get(rule_id)
+                return getattr(row, "media_cleared_at", None) if row else None
+            finally:
+                session.close()
+        except Exception:
+            return None
+
     async def _process_media(self, client, message, context=None, rule_id=None):
         """处理媒体内容"""
         media_list = []
@@ -302,6 +322,22 @@ class RSSFilter(BaseFilter):
                     if skipped_msg.id == message.id:
                         logger.info(f"媒体文件 {name or ''} (大小: {size}MB) 已在skipped_media列表中，RSS过滤器跳过下载")
                         return media_list
+
+            # 清理过媒体的规则只抓清理之后的新消息，否则重跑旧文章会把图又下载回来
+            cleared_at = self._rule_media_cleared_at(context, rule_id)
+            if cleared_at is not None and getattr(message, 'date', None) is not None:
+                try:
+                    msg_date = message.date
+                    if getattr(msg_date, 'tzinfo', None) is not None:
+                        msg_date = msg_date.replace(tzinfo=None)
+                    cleared = cleared_at
+                    if getattr(cleared, 'tzinfo', None) is not None:
+                        cleared = cleared.replace(tzinfo=None)
+                    if msg_date < cleared:
+                        logger.info(f"媒体已清理，跳过历史媒体: {getattr(message, 'id', '?')}")
+                        return media_list
+                except Exception as exc:
+                    logger.debug(f"比较媒体清理时间失败: {exc}")
 
             # 处理文档类型
             if hasattr(message, 'document') and message.document:

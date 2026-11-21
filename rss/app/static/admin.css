@@ -116,6 +116,7 @@ tbody tr:hover{background:#fafafa}
 .tag.bot{background:var(--brand-soft);color:var(--brand-ink)}
 .tag.user{background:#f0f0f0;color:#5a5a5a}
 .tag.warn{background:var(--warn-soft);color:#8a4500}
+.tag.err{background:#fdecec;color:#b42318}
 
 .switch{position:relative;display:inline-block;width:36px;height:20px;flex:0 0 auto}
 .switch input{display:none}

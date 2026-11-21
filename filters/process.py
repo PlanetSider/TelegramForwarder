@@ -78,9 +78,32 @@ async def process_forward_rule(client, event, chat_id, rule):
     
     # 执行过滤器链
     result = await filter_chain.process(client, event, chat_id, rule)
+    await _mark_invalid_if_needed(filter_chain.last_context, rule, client)
     _record_history(filter_chain.last_context, rule)
     
     return result
+
+
+async def _mark_invalid_if_needed(context, rule, client) -> None:
+    """发送失败且原因不可恢复时，把规则标失效并通知。
+
+    只看过滤器链收集到的错误文本：FloodWait、超时这类可重试的错误会被
+    rule_health.explain_invalid 挡掉，不会把规则永久停掉。
+    """
+    if context is None or getattr(rule, "invalid_at", None) is not None:
+        return
+    from utils.rule_health import explain_context_errors, mark_rule_invalid
+    from utils.rule_notify import notify_rule_invalid
+
+    reason = explain_context_errors(getattr(context, "errors", None))
+    if not reason:
+        return
+    if not mark_rule_invalid(rule.id, reason):
+        return
+    try:
+        await notify_rule_invalid(rule, reason, client=client)
+    except Exception:
+        logger.debug('发送规则失效通知失败', exc_info=True)
 
 def _record_history(context, rule) -> None:
     """把这次转发的结果写进「转发历史」。旁路能力，失败不影响转发。"""

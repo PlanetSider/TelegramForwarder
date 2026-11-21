@@ -84,4 +84,23 @@ async def process_forward_rule(client, event, chat_id, rule):
                 
         except Exception as e:
             logger.error(f'转发消息时出错: {str(e)}')
-            logger.exception(e) 
+            logger.exception(e)
+            await _mark_invalid_if_needed(rule, e, client)
+
+
+async def _mark_invalid_if_needed(rule, error, client):
+    """用户账号转发失败且原因不可恢复时，把规则标失效并通知。"""
+    if getattr(rule, 'invalid_at', None) is not None:
+        return
+    from utils.rule_health import explain_invalid, mark_rule_invalid
+    from utils.rule_notify import notify_rule_invalid
+
+    reason = explain_invalid(error)
+    if not reason:
+        return
+    if not mark_rule_invalid(rule.id, reason):
+        return
+    try:
+        await notify_rule_invalid(rule, reason, client=client)
+    except Exception:
+        logger.debug('发送规则失效通知失败', exc_info=True)

@@ -25,6 +25,9 @@ DEFAULT_PORT = int(os.getenv("BRIDGE_PORT", "9805"))
 
 _TOKEN_ENV = "BRIDGE_TOKEN"
 
+# Telegram 官方服务号（登录验证码、安全提醒等系统通知），在私聊里人工置顶
+_TELEGRAM_SERVICE_ID = 777000
+
 
 def ensure_token() -> str:
     """取出/生成内部 token。
@@ -136,8 +139,10 @@ async def _handle_dialogs(request: web.Request) -> web.Response:
             if is_bot:
                 kind = "bot"
             elif is_channel:
+                # 广播频道：只能订阅，没有可对话的输入框，评论区另有按钮
                 kind = "channel"
             elif is_group:
+                # 超级群与普通群，均可直接对话
                 kind = "group"
             elif is_user:
                 kind = "private"
@@ -157,7 +162,43 @@ async def _handle_dialogs(request: web.Request) -> web.Response:
         logger.warning("拉取会话列表失败: %s", exc)
         return _json_error(f"拉取会话列表失败: {exc}", 500)
 
+    await _promote_telegram_service(items, user_client)
+
     return web.json_response({"ok": True, "count": len(items), "items": items})
+
+
+async def _promote_telegram_service(items, user_client) -> None:
+    """把 Telegram 官方服务号（777000）置顶，让「私聊」类第一条就是它。
+
+    正常情况它本来就在 iter_dialogs 里，只做一次原地前移；不在前 limit 条
+    （例如会话很久没打开）时才补查一次实体。补查失败直接跳过：它只是展示
+    上的便利，不能影响整个会话列表。
+    """
+    for idx, item in enumerate(items):
+        if item.get("id") == _TELEGRAM_SERVICE_ID:
+            if idx:
+                items.insert(0, items.pop(idx))
+            return
+
+    try:
+        entity = await asyncio.wait_for(
+            user_client.get_entity(_TELEGRAM_SERVICE_ID), timeout=5
+        )
+    except Exception as exc:
+        logger.debug("补查 Telegram 服务号会话失败: %s", exc)
+        return
+
+    items.insert(0, {
+        "id": _TELEGRAM_SERVICE_ID,
+        "name": getattr(entity, "first_name", None) or "Telegram",
+        "username": getattr(entity, "username", None),
+        "is_channel": False,
+        "is_group": False,
+        "is_user": True,
+        # 777000 是 User 而不是 bot，否则会被分到「机器人」类
+        "is_bot": False,
+        "kind": "private",
+    })
 
 
 async def _resolve_entity(client, text: str):

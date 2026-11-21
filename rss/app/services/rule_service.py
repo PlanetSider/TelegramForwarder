@@ -84,6 +84,8 @@ def rule_brief(rule: ForwardRule) -> Dict[str, Any]:
         "kind": _route_kind(rule),
         "is_push_only": rule.target_chat_id is None,
         "enable_rule": bool(rule.enable_rule),
+        "invalid_at": rule.invalid_at.isoformat() if getattr(rule, "invalid_at", None) else None,
+        "invalid_reason": getattr(rule, "invalid_reason", None) or "",
         "use_bot": bool(rule.use_bot),
         "handle_mode": _enum_value(rule.handle_mode, "FORWARD"),
         "forward_mode": _enum_value(rule.forward_mode, "blacklist"),
@@ -166,6 +168,8 @@ def rule_detail(rule: ForwardRule) -> Dict[str, Any]:
         "is_push_only": rule.target_chat_id is None,
         # 基础
         "enable_rule": bool(rule.enable_rule),
+        "invalid_at": rule.invalid_at.isoformat() if getattr(rule, "invalid_at", None) else None,
+        "invalid_reason": getattr(rule, "invalid_reason", None) or "",
         "use_bot": bool(rule.use_bot),
         "handle_mode": _enum_value(rule.handle_mode, "FORWARD"),
         "message_mode": _enum_value(rule.message_mode, "Markdown"),
@@ -301,9 +305,13 @@ def list_rules(session, q: str = "", status: str = "", mode: str = "") -> List[D
         query = query.join(Chat, ForwardRule.source_chat_id == Chat.id, isouter=True)
         query = query.filter(Chat.name.like(like))
     if status == "enabled":
-        query = query.filter(ForwardRule.enable_rule.is_(True))
+        # 失效的规则 enable_rule 往往还是 True，单独归「失效」，不再算启用
+        query = query.filter(ForwardRule.enable_rule.is_(True),
+                             ForwardRule.invalid_at.is_(None))
     elif status == "disabled":
         query = query.filter(ForwardRule.enable_rule.is_(False))
+    elif status == "invalid":
+        query = query.filter(ForwardRule.invalid_at.is_not(None))
     if mode == "bot":
         query = query.filter(ForwardRule.use_bot.is_(True))
     elif mode == "user":
@@ -559,6 +567,22 @@ def toggle_rule(session, rule_id: int, enabled: bool) -> bool:
     rule.enable_rule = bool(enabled)
     session.commit()
     return rule.enable_rule
+
+
+def recover_rule(session, rule_id: int) -> bool:
+    """清除失效标记，让规则重新参与转发。
+
+    只改标记，不动 enable_rule —— 停用的规则恢复后依然是停用状态。
+    """
+    rule = session.query(ForwardRule).get(rule_id)
+    if not rule:
+        raise LookupError("规则不存在")
+    if getattr(rule, "invalid_at", None) is None:
+        return False
+    rule.invalid_at = None
+    rule.invalid_reason = None
+    session.commit()
+    return True
 
 
 def delete_rule(session, rule_id: int) -> bool:

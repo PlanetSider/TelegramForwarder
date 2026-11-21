@@ -185,6 +185,12 @@ class ForwardBatcher:
             if rule is None:
                 logger.warning("[规则%s] 规则已不存在，跳过合并发送", rule_id)
                 return
+            if getattr(rule, "invalid_at", None) is not None:
+                logger.info(
+                    "[规则%s] 规则已失效，丢弃合并窗口内的 %s 条消息",
+                    rule_id, len(items),
+                )
+                return
 
             from filters.process import process_forward_rule
             await process_forward_rule(client, agg_event, chat_id, rule)

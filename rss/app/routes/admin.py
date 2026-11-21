@@ -19,7 +19,7 @@ from fastapi.templating import Jinja2Templates
 
 from models.models import get_session
 from rss.app.routes.auth import get_current_user
-from rss.app.services import rule_service, summary_task_service
+from rss.app.services import rule_service, rule_storage, summary_task_service
 from utils.log_buffer import get_recent
 from utils import ai_client, app_config
 
@@ -272,7 +272,8 @@ async def admin_settings(request: Request, group: str, user=Depends(get_current_
 DIALOG_KINDS = [
     ("group", "群组", "超级群与普通群"),
     ("channel", "频道", "订阅频道"),
-    ("bot", "通知机器人", "机器人会话"),
+    ("bot", "机器人", "机器人会话"),
+    ("private", "私聊", "一对一会话（含真人）"),
 ]
 
 
@@ -501,6 +502,72 @@ async def admin_api_toggle_rule(rule_id: int, request: Request,
     except Exception as exc:
         logger.exception("切换规则状态失败 rule=%s", rule_id)
         return _fail(f"操作失败: {exc}", 500)
+    finally:
+        session.close()
+
+
+@router.post("/api/rules/{rule_id}/recover")
+async def admin_api_recover_rule(rule_id: int, user=Depends(get_current_user)):
+    """手动恢复一条被判定失效的规则。"""
+    if not user:
+        return _fail("未登录", 401)
+
+    session = get_session()
+    try:
+        changed = rule_service.recover_rule(session, rule_id)
+        return JSONResponse({"ok": True, "recovered": changed})
+    except LookupError as exc:
+        return _fail(str(exc), 404)
+    except Exception as exc:
+        logger.exception("恢复规则失败 rule=%s", rule_id)
+        return _fail(f"操作失败: {exc}", 500)
+    finally:
+        session.close()
+
+
+@router.get("/api/rules/storage")
+async def admin_api_rule_storage(ids: str = "", user=Depends(get_current_user)):
+    """批量读取规则占用空间。列表页首屏先渲染「统计中」，再用这个接口回填。"""
+    if not user:
+        return _fail("未登录", 401)
+
+    rule_ids = [int(raw) for raw in (ids or "").split(",") if raw.strip().isdigit()]
+    session = get_session()
+    try:
+        if not rule_ids:
+            rule_ids = [row["id"] for row in rule_service.list_rules(session)]
+        return JSONResponse({"ok": True, "items": rule_storage.many_storage(session, rule_ids)})
+    except Exception as exc:
+        logger.exception("统计规则占用空间失败")
+        return _fail(f"统计失败: {exc}", 500)
+    finally:
+        session.close()
+
+
+@router.post("/api/rules/{rule_id}/storage/clear")
+async def admin_api_clear_rule_storage(rule_id: int, request: Request,
+                                       user=Depends(get_current_user)):
+    """清理规则数据：text（转发历史）/ images / videos。"""
+    if not user:
+        return _fail("未登录", 401)
+
+    body = await _json_body(request)
+    kind = (body.get("kind") or "").strip()
+    session = get_session()
+    try:
+        if kind == "text":
+            result = rule_storage.clear_history(session, rule_id)
+        elif kind in ("images", "videos"):
+            result = rule_storage.clear_media(session, rule_id, kind)
+        else:
+            return _fail("未知的清理类型", 400)
+        result.update(rule_storage.rule_storage(session, rule_id, use_cache=False))
+        return JSONResponse({"ok": True, **result})
+    except ValueError as exc:
+        return _fail(str(exc), 400)
+    except Exception as exc:
+        logger.exception("清理规则数据失败 rule=%s kind=%s", rule_id, kind)
+        return _fail(f"清理失败: {exc}", 500)
     finally:
         session.close()
 

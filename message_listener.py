@@ -175,6 +175,9 @@ async def handle_user_message(event, user_client, bot_client):
             if not rule.enable_rule:
                 logger.info(f'规则 {rule.id} 未启用')
                 continue
+            if getattr(rule, 'invalid_at', None) is not None:
+                logger.info(f'规则 {rule.id} 已失效（{rule.invalid_reason or "原因未知"}），跳过')
+                continue
             target_name = rule.target_chat.name if rule.target_chat else '推送通道'
             logger.info(f'处理转发规则 ID: {rule.id} (从 {source_chat.name} 转发到: {target_name})')
             if rule.use_bot:

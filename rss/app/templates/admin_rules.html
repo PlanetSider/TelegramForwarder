@@ -19,6 +19,7 @@
     <option value="" {{ 'selected' if not status else '' }}>全部状态</option>
     <option value="enabled" {{ 'selected' if status == 'enabled' else '' }}>仅启用</option>
     <option value="disabled" {{ 'selected' if status == 'disabled' else '' }}>仅停用</option>
+    <option value="invalid" {{ 'selected' if status == 'invalid' else '' }}>仅失效</option>
   </select>
   <select class="input" name="mode">
     <option value="" {{ 'selected' if not mode else '' }}>全部方式</option>
@@ -41,7 +42,8 @@
         <th>能力</th>
         <th style="width:100px">过滤</th>
         <th style="width:120px">状态</th>
-        <th style="width:150px"></th>
+        <th style="width:140px">占用空间</th>
+        <th style="width:210px"></th>
       </tr>
     </thead>
     <tbody>
@@ -72,7 +74,8 @@
           <span class="tag">替 {{ r.replace_count }}</span>
         </td>
         <td>
-          {% if r.enable_rule %}<span class="tag ok">● 启用</span>
+          {% if r.invalid_at %}<span class="tag err" title="{{ r.invalid_reason }}">● 失效</span>
+          {% elif r.enable_rule %}<span class="tag ok">● 启用</span>
           {% else %}<span class="tag off">○ 停用</span>{% endif %}
           <div style="margin-top:5px">
             {% if r.kind == 'same_group' %}<span class="tag">同群重发</span>
@@ -80,8 +83,15 @@
             {% else %}<span class="tag push">跨通道</span>{% endif %}
           </div>
         </td>
+        <td data-size-for="{{ r.id }}"><span class="sub" style="color:#8c8c8c">统计中…</span></td>
         <td style="white-space:nowrap">
           <a class="btn sm ghost" href="/admin/rules/{{ r.id }}">查看</a>
+          {% if r.invalid_at %}
+          <button class="btn sm" type="button" onclick="recoverRule({{ r.id }})">恢复</button>
+          {% else %}
+          <button class="btn sm" type="button"
+                  onclick="toggleRule({{ r.id }}, {{ 'false' if r.enable_rule else 'true' }})">{{ '停用' if r.enable_rule else '启用' }}</button>
+          {% endif %}
           <button class="btn sm danger" type="button"
                   onclick="removeRule({{ r.id }})">删除</button>
         </td>
@@ -122,6 +132,55 @@
 
 {% block scripts %}
 <script>
+  function fmtBytes(n) {
+    n = Number(n) || 0;
+    if (n < 1024) return n + ' B';
+    var units = ['KB', 'MB', 'GB', 'TB'], i = -1;
+    do { n /= 1024; i++; } while (n >= 1024 && i < units.length - 1);
+    return n.toFixed(n >= 10 ? 0 : 1) + ' ' + units[i];
+  }
+
+  window.toggleRule = async function (id, enabled) {
+    try {
+      await window.api('POST', '/admin/api/rules/' + id + '/toggle', { enabled: enabled });
+      window.toast('规则 #' + id + (enabled ? ' 已启用' : ' 已停用'), 'ok');
+      setTimeout(function () { location.reload(); }, 400);
+    } catch (err) {
+      window.toast(err.message || '操作失败', 'err');
+    }
+  };
+
+  window.recoverRule = async function (id) {
+    try {
+      await window.api('POST', '/admin/api/rules/' + id + '/recover');
+      window.toast('规则 #' + id + ' 已恢复，下一轮巡检会重新检查', 'ok');
+      setTimeout(function () { location.reload(); }, 400);
+    } catch (err) {
+      window.toast(err.message || '恢复失败', 'err');
+    }
+  };
+
+  (async function loadSizes() {
+    var cells = document.querySelectorAll('[data-size-for]');
+    if (!cells.length) return;
+    var ids = Array.prototype.map.call(cells, function (c) { return c.dataset.sizeFor; }).join(',');
+    try {
+      var data = await window.api('GET', '/admin/api/rules/storage?ids=' + encodeURIComponent(ids));
+      ((data && data.items) || []).forEach(function (item) {
+        var cell = document.querySelector('[data-size-for="' + item.rule_id + '"]');
+        if (!cell) return;
+        var db = item.database || {}, media = item.media || {};
+        cell.innerHTML = '<span title="数据库 ' + fmtBytes(db.bytes || 0) + '（历史 ' +
+          (db.rows || 0) + ' 条） / 媒体 ' + fmtBytes(media.total || 0) + '">' +
+          fmtBytes(item.total) + '</span>';
+      });
+    } catch (err) {
+      cells.forEach(function (c) {
+        c.innerHTML = '<span style="color:#b42318" title="点击刷新重试">统计失败</span>';
+      });
+    }
+  })();
+
   window.removeRule = async function (id) {
     if (!confirm('删除规则 #' + id + '？\n该规则的关键字、替换、RSS、转发目标会一并删除，且不可恢复。')) {
       return;

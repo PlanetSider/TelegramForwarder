@@ -32,7 +32,9 @@
         <a href="/admin/dialogs/channel"
            class="{{ 'on' if active == 'dialogs' and (kind | default('')) == 'channel' else '' }}">频道</a>
         <a href="/admin/dialogs/bot"
-           class="{{ 'on' if active == 'dialogs' and (kind | default('')) == 'bot' else '' }}">通知机器人</a>
+           class="{{ 'on' if active == 'dialogs' and (kind | default('')) == 'bot' else '' }}">机器人</a>
+        <a href="/admin/dialogs/private"
+           class="{{ 'on' if active == 'dialogs' and (kind | default('')) == 'private' else '' }}">私聊</a>
       </div>
       <div class="nav-group">配置</div>
       <a href="/admin/setup" class="{{ 'on' if active == 'setup' else '' }}">

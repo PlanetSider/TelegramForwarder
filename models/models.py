@@ -109,6 +109,13 @@ class ForwardRule(Base):
     feishu_bot_id = Column(Integer, ForeignKey('feishu_bots.id'), nullable=True)
     feishu_chat_id = Column(String(128), nullable=True)  # 机器人所在群的 chat_id
 
+    # 规则健康：转发源或转发目标不可达时由主进程置位。
+    # 置位后入口直接跳过，不再产生无意义的重试与历史；恢复只能手动点「恢复」。
+    invalid_at = Column(DateTime, nullable=True)
+    invalid_reason = Column(String(255), nullable=True)
+    # 该规则的 RSS 媒体清理时间：文章发布时间早于此值就不再下载图片/视频
+    media_cleared_at = Column(DateTime, nullable=True)
+
     # 添加唯一约束
     __table_args__ = (
         UniqueConstraint('source_chat_id', 'target_chat_id', name='unique_source_target'),
@@ -537,6 +544,9 @@ def migrate_db(engine):
 
         'media_allow_text': 'ALTER TABLE forward_rules ADD COLUMN media_allow_text BOOLEAN DEFAULT FALSE',
         'enable_ai_upload_image': 'ALTER TABLE forward_rules ADD COLUMN enable_ai_upload_image BOOLEAN DEFAULT FALSE',
+        'invalid_at': 'ALTER TABLE forward_rules ADD COLUMN invalid_at DATETIME DEFAULT NULL',
+        'invalid_reason': 'ALTER TABLE forward_rules ADD COLUMN invalid_reason VARCHAR(255) DEFAULT NULL',
+        'media_cleared_at': 'ALTER TABLE forward_rules ADD COLUMN media_cleared_at DATETIME DEFAULT NULL',
     }
 
     keywords_new_columns = {
